@@ -161,24 +161,16 @@ class FullTemplate(TemplateReader):
         new_dict['[METRIC]'] = str(task_dict['metric'])
         new_dict['[NUM_SAMPLES]'] = str(task_dict['num_samples'])
         new_dict['[NUM_FEATURES]'] = str(task_dict['num_feat'])
-        # new_dict['[NUM_NUM_FEATURES]'] = str(task_dict['num_feat_cont'])
-        # new_dict['[NUM_CAT_FEATURES]'] = str(task_dict['num_feat_cat'])
-        # new_dict['[NUM_BY_CLASS]']     = self.obtain_str_class(task_dict['num_by_class'])
-        # if task_dict['task'] == 'classification':
-        #     new_dict['[ADD_CLASS_INFO]'] = 'Class distribution is %s.' % new_dict['[NUM_BY_CLASS]']
-        # else:
-        #     new_dict['[ADD_CLASS_INFO]'] = ''
-        # if self.context_template == 'Extended_Context':
-        #     new_dict['[NUM_STAT]']         = self.add_str_num(task_dict['num_feat_cont'], str(task_dict['skew'])[1:-1], str(task_dict['kurtosis'])[1:-1] )
-        #     new_dict['[CORR_FEATURES]']    = str(task_dict['num_x_corr_pass'])
-        #     new_dict['[CORR_TARGET]']      = str(task_dict['num_y_corr_pass'])
-        #     new_dict['[NUM_POSSIBLE]']     = str(task_dict['num_x_corr'])
+        new_dict['[NUM_CLASSES]'] = str(task_dict['n_classes'])
+        new_dict['[PIXEL_MEAN]'] = str(task_dict['pixel_mean'])
+        new_dict['[PIXEL_STD]'] = str(task_dict['pixel_std'])
+        new_dict['[CLASS_DIST]'] = str(task_dict['class_distribution'])
         return new_dict
 
     def add_str_num(self, num_feat, skew, kurtosis):
         if num_feat > 0:
             this_str = 'We are standarizing numerical values to have mean 0 and std 1. The Skewness of each feature is %s and the kurtosis is %s.' % (
-            skew, kurtosis)
+                skew, kurtosis)
         else:
             this_str = ''
         return this_str
