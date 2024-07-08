@@ -11,10 +11,10 @@ from langchain import FewShotPromptTemplate
 from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
 
-openai.api_type = os.environ["OPENAI_API_TYPE"]
-openai.api_version = os.environ["OPENAI_API_VERSION"]
-openai.api_base = os.environ["OPENAI_API_BASE"]
-openai.api_key = os.environ["OPENAI_API_KEY"]
+openai.api_type = ""
+openai.api_version = ""
+openai.api_base = ""
+openai.api_key = ""
 
 
 class LLM_ACQ:

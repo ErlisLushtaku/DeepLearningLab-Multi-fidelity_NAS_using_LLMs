@@ -1,3 +1,5 @@
+from ConfigSpace import Configuration
+
 from llambo.discriminative_sm import LLM_DIS_SM
 from llambo.generative_sm import LLM_GEN_SM
 from llambo.acquisition_function import LLM_ACQ
@@ -7,23 +9,25 @@ import pandas as pd
 import time
 import pprint
 
+
 class LLAMBO:
-    def __init__(self, 
-                 task_context: dict, # dictionary describing task (see above)
-                 sm_mode, # either 'generative' or 'discriminative'
-                 n_candidates, # number of candidate points to sample at each iteration
-                 n_templates, # number of templates for LLM queries
-                 n_gens,    # number of generations for LLM, set at 5
-                 alpha,    # alpha for LLM, recommended to be -0.2
-                 n_initial_samples, # number of initial samples to evaluate
-                 n_trials,   # number of trials to run,
-                 init_f,        # function to generate initial configurations
-                 bbox_eval_f,       # bbox function to evaluate a point
-                 chat_engine,       # LLM chat engine
-                 top_pct=None,      # only used for generative SM, top percentage of points to consider for generative SM
-                 use_input_warping=False,       # whether to use input warping
-                 prompt_setting=None,    # ablation on prompt design, either 'full_context' or 'partial_context' or 'no_context'
-                 shuffle_features=False     # whether to shuffle features in prompt generation
+    def __init__(self,
+                 task_context: dict,  # dictionary describing task (see above)
+                 sm_mode,  # either 'generative' or 'discriminative'
+                 n_candidates,  # number of candidate points to sample at each iteration
+                 n_templates,  # number of templates for LLM queries
+                 n_gens,  # number of generations for LLM, set at 5
+                 alpha,  # alpha for LLM, recommended to be -0.2
+                 n_initial_samples,  # number of initial samples to evaluate
+                 n_trials,  # number of trials to run,
+                 init_f,  # function to generate initial configurations
+                 bbox_eval_f,  # bbox function to evaluate a point
+                 chat_engine,  # LLM chat engine
+                 top_pct=None,  # only used for generative SM, top percentage of points to consider for generative SM
+                 use_input_warping=False,  # whether to use input warping
+                 prompt_setting=None,
+                 # ablation on prompt design, either 'full_context' or 'partial_context' or 'no_context'
+                 shuffle_features=False  # whether to shuffle features in prompt generation
                  ):
         self.task_context = task_context
         assert sm_mode in ['generative', 'discriminative']
@@ -37,8 +41,8 @@ class LLAMBO:
         self.alpha = alpha
         self.n_initial_samples = n_initial_samples
         self.n_trials = n_trials
-        self.llm_query_cost = []    # list of cost for LLM calls in EACH TRIAL
-        self.llm_query_time = []    # list of time taken for LLM calls in EACH TRIAL
+        self.llm_query_cost = []  # list of cost for LLM calls in EACH TRIAL
+        self.llm_query_time = []  # list of time taken for LLM calls in EACH TRIAL
 
         assert type(shuffle_features) == bool, 'shuffle_features should be a boolean'
         assert type(use_input_warping) == bool, 'use_input_warping should be a boolean'
@@ -52,35 +56,34 @@ class LLAMBO:
             warping_transformer = None
 
         rate_limiter = RateLimiter(max_tokens=100000, time_frame=60, max_requests=720)
-        
-        print('='*150)
+
+        print('=' * 150)
         print(f'[Search settings]: ' + '\n\t'
-              f'n_candidates: {n_candidates}, n_templates: {n_templates}, n_gens: {n_gens}, ' + '\n\t'
-              f'alpha: {alpha}, n_initial_samples: {n_initial_samples}, n_trials: {n_trials}, ' + '\n\t'
-              f'using warping: {use_input_warping}, ablation: {prompt_setting}, '
-              f'shuffle_features: {shuffle_features}')
+                                       f'n_candidates: {n_candidates}, n_templates: {n_templates}, n_gens: {n_gens}, ' + '\n\t'
+                                                                                                                         f'alpha: {alpha}, n_initial_samples: {n_initial_samples}, n_trials: {n_trials}, ' + '\n\t'
+                                                                                                                                                                                                             f'using warping: {use_input_warping}, ablation: {prompt_setting}, '
+                                                                                                                                                                                                             f'shuffle_features: {shuffle_features}')
         print(f'[Task]: ' + '\n\t'
-              f'task type: {task_context["task"]}, sm: {sm_mode}, lower is better: {lower_is_better}')
+                            f'task type: {task_context["task"]}, sm: {sm_mode}, lower is better: {lower_is_better}')
         print(f'Hyperparameter search space: ')
-        pprint.pprint(task_context['hyperparameter_constraints'])
-        print('='*150)
+        # pprint.pprint(task_context['hyperparameter_constraints'])
+        print('=' * 150)
 
         # initialize surrogate model and acquisition function
         if sm_mode == 'generative':
             self.surrogate_model = LLM_GEN_SM(task_context, n_gens, lower_is_better, top_pct,
                                               n_templates=n_templates, rate_limiter=None)
         else:
-            self.surrogate_model = LLM_DIS_SM(task_context, n_gens, lower_is_better, 
-                                              n_templates=n_templates, rate_limiter=rate_limiter, 
+            self.surrogate_model = LLM_DIS_SM(task_context, n_gens, lower_is_better,
+                                              n_templates=n_templates, rate_limiter=rate_limiter,
                                               warping_transformer=warping_transformer,
-                                              chat_engine=chat_engine, prompt_setting=prompt_setting, 
+                                              chat_engine=chat_engine, prompt_setting=prompt_setting,
                                               shuffle_features=shuffle_features)
-            
-        self.acq_func = LLM_ACQ(task_context, n_candidates, n_templates, lower_is_better, 
-                                rate_limiter=rate_limiter, warping_transformer=warping_transformer, 
-                                chat_engine=chat_engine, prompt_setting=prompt_setting, 
-                                shuffle_features=shuffle_features)
 
+        self.acq_func = LLM_ACQ(task_context, n_candidates, n_templates, lower_is_better,
+                                rate_limiter=rate_limiter, warping_transformer=warping_transformer,
+                                chat_engine=chat_engine, prompt_setting=prompt_setting,
+                                shuffle_features=shuffle_features)
 
     def _initialize(self):
         '''Initialize the optimization loop.'''
@@ -93,7 +96,8 @@ class LLAMBO:
             assert isinstance(item, dict), 'init_f() should return a list of configs (dictionaries)'
 
         init_configs = pd.DataFrame(init_configs)
-        assert init_configs.shape[0] == self.n_initial_samples, 'init_f() should return n_initial_samples number of configs'
+        assert init_configs.shape[
+                   0] == self.n_initial_samples, 'init_f() should return n_initial_samples number of configs'
 
         # create empty pandas dataframe for observed function values
         self.observed_fvals = pd.DataFrame()
@@ -152,8 +156,9 @@ class LLAMBO:
             self.best_fval = self.observed_fvals['score'].max()
             best_gen_fval = self.observed_fvals[test_metric].max()
 
-        print(f'[Initialization] COMPLETED: best fval: {self.best_fval:.4f}, best generalization fval: {best_gen_fval:.4f}')
-        print('='*150)
+        print(
+            f'[Initialization] COMPLETED: best fval: {self.best_fval:.4f}, best generalization fval: {best_gen_fval:.4f}')
+        print('=' * 150)
 
         # optimization loop
         for trial_id in range(self.n_trials):
@@ -162,30 +167,32 @@ class LLAMBO:
 
             start_time = time.time()
             # get candidate point
-            candidate_points, cost, time_taken = self.acq_func.get_candidate_points(self.observed_configs, self.observed_fvals[['score']], alpha=self.alpha)
+            candidate_points, cost, time_taken = self.acq_func.get_candidate_points(self.observed_configs,
+                                                                                    self.observed_fvals[['score']],
+                                                                                    alpha=self.alpha)
             trial_cost += cost
             trial_query_time += time_taken
 
-            print('='*150)
+            print('=' * 150)
             print('EXAMPLE POINTS PROPOSED')
             print(candidate_points)
-            print('='*150)
+            print('=' * 150)
 
             # select candidate point
-            sel_candidate_point, cost, time_taken = self.surrogate_model.select_query_point(self.observed_configs, 
-                                                                           self.observed_fvals[['score']], 
-                                                                           candidate_points)
+            sel_candidate_point, cost, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
+                                                                                            self.observed_fvals[
+                                                                                                ['score']],
+                                                                                            candidate_points)
             trial_cost += cost
             trial_query_time += time_taken
 
             self.llm_query_cost.append(trial_cost)
             self.llm_query_time.append(trial_query_time)
 
-            print('='*150)
+            print('=' * 150)
             print('SELECTED CANDIDATE POINT')
             print(sel_candidate_point)
-            print('='*150)
-
+            print('=' * 150)
 
             # evaluate candidate point
             sel_candidate_point, sel_candidate_fval = self._evaluate_config(sel_candidate_point)
@@ -193,11 +200,11 @@ class LLAMBO:
             # update observations
             self._update_observations(sel_candidate_point, sel_candidate_fval)
 
-            print('='*150)
+            print('=' * 150)
             print('UPDATED OBSERVATIONS')
             print(self.observed_configs)
             print(self.observed_fvals)
-            print('='*150)
+            print('=' * 150)
 
             end_time = time.time()
             time_taken = end_time - start_time
@@ -219,10 +226,12 @@ class LLAMBO:
                     best_found = False
 
             if best_found:
-                print(f'[Trial {trial_id} completed, time taken: {time_taken:.2f}s] best fval (cv): {self.best_fval:.4f}, current fval (cv): {current_fval_cv:.4f}. Generalization fval: {current_fval_gen:.4f} NEW BEST FVAL FOUND!!')
-            else: 
-                print(f'[Trial {trial_id} completed, time taken: {time_taken:.2f}s] best fval (cv): {self.best_fval:.4f}, current fval (cv): {current_fval_cv:.4f}. Generalization fval: {current_fval_gen:.4f}.')
-            print('='*150)
+                print(
+                    f'[Trial {trial_id} completed, time taken: {time_taken:.2f}s] best fval (cv): {self.best_fval:.4f}, current fval (cv): {current_fval_cv:.4f}. Generalization fval: {current_fval_gen:.4f} NEW BEST FVAL FOUND!!')
+            else:
+                print(
+                    f'[Trial {trial_id} completed, time taken: {time_taken:.2f}s] best fval (cv): {self.best_fval:.4f}, current fval (cv): {current_fval_cv:.4f}. Generalization fval: {current_fval_gen:.4f}.')
+            print('=' * 150)
 
         # returns history of observed configurations and function values
         return self.observed_configs, self.observed_fvals
