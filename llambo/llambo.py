@@ -65,7 +65,7 @@ class LLAMBO:
                                                                                                                                                                                                              f'shuffle_features: {shuffle_features}')
         print(f'[Task]: ' + '\n\t'
                             f'task type: {task_context["task"]}, sm: {sm_mode}, lower is better: {lower_is_better}')
-        print(f'Hyperparameter search space: ')
+        # print(f'Hyperparameter search space: ')
         # pprint.pprint(task_context['hyperparameter_constraints'])
         print('=' * 150)
 
