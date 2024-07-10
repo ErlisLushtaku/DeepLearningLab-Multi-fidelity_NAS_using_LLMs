@@ -10,6 +10,7 @@ from aiohttp import ClientSession
 from langchain import FewShotPromptTemplate
 from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
+import ollama
 
 openai.api_type = ""
 openai.api_version = ""
@@ -261,7 +262,7 @@ Hyperparameter configuration: {Q}"""
             prefix += f"Recommend a configuration that can achieve the target performance of {jittered_desired_fval:.6f}. "
             if use_context in ['partial_context', 'full_context']:
                 prefix += "Do not recommend categorical choices outside of given lists. Recommend categorical choices with highest possible precision, as requested by the allowed ranges. "
-            prefix += f"Your response must only contain the predicted configuration, in the format ## configuration ##.\n"
+            prefix += f"Your response must only contain the predicted configuration, in the format ## configuration ##. Please provide a configuration different from the provided ones.\n"
 
             suffix = """
 Performance: {A}
@@ -357,53 +358,17 @@ Hyperparameter configuration:"""
         response_json = {}
         for pair in pairs:
             key, value = [x.strip() for x in pair.split(':')]
-            response_json[key] = float(value)
+            response_json[key] = value
 
         return response_json
 
     def _filter_candidate_points(self, observed_points, candidate_points, precision=8):
         '''Filter candidate points that already exist in observed points. Also remove duplicates.'''
         # drop points that already exist in observed points
-        rounded_observed = [{key: round(value, precision) for key, value in d.items()} for d in observed_points]
-        rounded_candidate = [{key: round(value, precision) for key, value in d.items()} for d in candidate_points]
-        filtered_candidates = [x for i, x in enumerate(candidate_points) if
-                               rounded_candidate[i] not in rounded_observed]
+        observed_tuples = [tuple(sorted(d.items())) for d in observed_points]
 
-        def is_within_range(value, allowed_range):
-            """Check if a value is within an allowed range."""
-            value_type, transform, search_range = allowed_range
-            if value_type == 'int':
-                [min_val, max_val] = search_range
-                if transform == 'log' and self.apply_warping:
-                    min_val = np.log10(min_val)
-                    max_val = np.log10(max_val)
-                    return min_val <= value <= max_val
-                else:
-                    return min_val <= value <= max_val and int(value) == value
-            elif value_type == 'float':  # THIS MIGHT NEED TO CHANGE, RIGHT NOW IT CAN"T SIT ON THE BOUNDARY
-                [min_val, max_val] = search_range
-                if transform == 'log' and self.apply_warping:
-                    min_val = np.log10(min_val)
-                    max_val = np.log10(max_val)
-                return min_val <= value <= max_val
-            elif value_type == 'ordinal':
-                # check that value is in allowed range up to 2 decimal places
-                return any(math.isclose(value, x, abs_tol=1e-2) for x in allowed_range[2])
-            else:
-                raise Exception('Unknown hyperparameter value type')
-
-        def is_dict_within_ranges(d, ranges_dict):
-            """Check if all values in a dictionary are within their respective allowable ranges."""
-            return all(key in ranges_dict and is_within_range(value, ranges_dict[key]) for key, value in d.items())
-
-        def filter_dicts_by_ranges(dict_list, ranges_dict):
-            """Return only those dictionaries where all values are within their respective allowable ranges."""
-            return [d for d in dict_list if is_dict_within_ranges(d, ranges_dict)]
-
-        # check that constraints are satisfied
-        hyperparameter_constraints = self.task_context['hyperparameter_constraints']
-        filtered_candidates = filter_dicts_by_ranges(filtered_candidates, hyperparameter_constraints)
-
+        # Create a new list for the filtered candidate points
+        filtered_candidates = [d for d in candidate_points if tuple(sorted(d.items())) not in observed_tuples]
         filtered_candidates = pd.DataFrame(filtered_candidates)
         # drop duplicates
         filtered_candidates = filtered_candidates.drop_duplicates()
@@ -483,26 +448,15 @@ Hyperparameter configuration:"""
 
         retry = 0
         while number_candidate_points < 5:
-            llm_responses = asyncio.run(self._async_generate_concurrently(prompt_templates, query_templates))
+            llm_responses = self.generate_responses(prompt_templates, query_templates)
 
             candidate_points = []
             tot_cost = 0
             tot_tokens = 0
             # loop through n_coroutine async calls
             for response in llm_responses:
-                if response is None:
-                    continue
-                # loop through n_gen responses
-                for response_message in response[0]['choices']:
-                    response_content = response_message['message']['content']
-                    try:
-                        response_content = response_content.split('##')[1].strip()
-                        candidate_points.append(self._convert_to_json(response_content))
-                    except:
-                        print(response_content)
-                        continue
-                tot_cost += response[1]
-                tot_tokens += response[2]
+                response_content = response.split('##')[1].strip()
+                candidate_points.append(self._convert_to_json(response_content))
 
             proposed_points = self._filter_candidate_points(observed_configs.to_dict(orient='records'),
                                                             candidate_points)
@@ -513,7 +467,7 @@ Hyperparameter configuration:"""
                   f'number of accepted candidate points: {filtered_candidate_points.shape[0]}')
 
             retry += 1
-            if retry > 3:
+            if retry > 5:
                 print(f'Desired fval: {desired_fval:.6f}')
                 print(f'Number of proposed candidate points: {len(candidate_points)}')
                 print(f'Number of accepted candidate points: {filtered_candidate_points.shape[0]}')
@@ -529,4 +483,25 @@ Hyperparameter configuration:"""
         end_time = time.time()
         time_taken = end_time - start_time
 
-        return filtered_candidate_points, tot_cost, time_taken
+        return filtered_candidate_points
+
+    def generate_response(self, user_message):
+        resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
+        return resp
+
+    def generate_responses(self, prompt_templates, query_templates):
+        tasks = []
+        for (prompt_template, query_template) in zip(prompt_templates, query_templates):
+            tasks.append(self.generate_response(prompt_template.format(A=query_template[0]['A'])))
+
+        assert len(tasks) == int(self.n_templates)
+        results = [None] * len(tasks)
+
+        llm_response = tasks
+
+        for idx, response in enumerate(llm_response):
+            if response is not None:
+                resp = response['message']['content']
+                results[idx] = resp
+
+        return results  # format [(resp, tot_cost, tot_tokens), None, (resp, tot_cost, tot_tokens)]

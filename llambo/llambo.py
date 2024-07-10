@@ -167,11 +167,9 @@ class LLAMBO:
 
             start_time = time.time()
             # get candidate point
-            candidate_points, cost, time_taken = self.acq_func.get_candidate_points(self.observed_configs,
-                                                                                    self.observed_fvals[['score']],
-                                                                                    alpha=self.alpha)
-            trial_cost += cost
-            trial_query_time += time_taken
+            candidate_points = self.acq_func.get_candidate_points(self.observed_configs,
+                                                                  self.observed_fvals[['score']],
+                                                                  alpha=self.alpha)
 
             print('=' * 150)
             print('EXAMPLE POINTS PROPOSED')
