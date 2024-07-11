@@ -62,7 +62,6 @@ def prepare_configurations(
                 lower_bound = hyperparameter_constraints[hyperparameter_names[i]][2][0]
             else:
                 lower_bound = hyperparameter_constraints[hyperparameter_names[i]][2][1]
-            n_dp = _count_decimal_places(lower_bound) # number of decimal places
             if use_feature_semantics:
                 row_string += f'{hyperparameter_names[i]} is ' 
             else:
@@ -120,7 +119,7 @@ def gen_prompt_tempates(
     task = task_context['task']
     tot_feats = task_context['tot_feats']
     cat_feats = task_context['cat_feats']
-    num_feats = task_context['num_feats']
+    num_feats = task_context['num_feat']
     n_classes = task_context['n_classes']
     n_samples = task_context['num_samples']
     metric = task_context['metric']
@@ -147,15 +146,15 @@ Performance: {A}"""
         )
 
         prefix = ""
-        prefix = f"The following are hyperparameter configurations for a {model} and the corresponding performance measured in {metric}."
+        prefix = f"The following are architecture configurations for a {model} and the corresponding performance measured in {metric}."
         if use_context == 'full_context':
             if task == 'classification':
-                prefix += f" The model is evaluated on a tabular {task} task and the label contains {n_classes} classes."
+                prefix += f" The model is evaluated on a image {task} task and the label contains {n_classes} classes."
             elif task == 'regression':
                 prefix += f" The model is evaluated on a tabular {task} task."
             else:
                 raise Exception
-            prefix += f" The tabular dataset contains {n_samples} samples and {tot_feats} features ({cat_feats} categorical, {num_feats} numerical). "
+            prefix += f" The dataset contains {n_samples} images and each image has height 32, width 32, and 3 channels."
         prefix += f" Your response should only contain the predicted {metric} in the format ## performance ##."
 
         suffix = """
