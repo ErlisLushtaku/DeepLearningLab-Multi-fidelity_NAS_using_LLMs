@@ -94,8 +94,8 @@ class LLM_DIS_SM:
     def _predict(self, all_prompt_templates, query_examples):
         start = time.time()
         all_preds = []
-        tot_tokens = 0
-        tot_cost = 0
+        # tot_tokens = 0
+        # tot_cost = 0
 
         bool_pred_returned = []
 
@@ -111,13 +111,15 @@ class LLM_DIS_SM:
                     sample_preds = [np.nan] * self.n_gens
                 else:
                     sample_preds = []
-                    template_response = [template_response for template_response in sample_response]
-                    x = [x for x in template_response[0]]
-                    x = x[0]
-                    all_gens_text = x['message']['content']
-
+                    # template_response = [template_response for template_response in sample_response]
+                    # x = [x for x in template_response[0]]
+                    # x = x[0]
+                    # all_gens_text_test = x['message']['content']
+                    all_gens_text = [response[0]['message']['content']
+                                     for response in sample_response
+                                     if 'message' in response[0]]
                     # all_gens_text = [x['message']['content'] for template_response in sample_response for x in
-                    #                  template_response[0]]  # fuarr this is some high level programming
+                    #                  template_response[0]['choices']]  # fuarr this is some high level programming
 
                     for gen_text in all_gens_text:
                         gen_pred = re.findall(r"## (-?[\d.]+) ##", gen_text)
@@ -129,8 +131,8 @@ class LLM_DIS_SM:
                     while len(sample_preds) < self.n_gens:
                         sample_preds.append(np.nan)
 
-                    tot_cost += sum([x[1] for x in sample_response])
-                    tot_tokens += sum([x[2] for x in sample_response])
+                    # tot_cost += sum([x[1] for x in sample_response])
+                    # tot_tokens += sum([x[2] for x in sample_response])
                 all_preds.append(sample_preds)
 
         end = time.time()
@@ -147,7 +149,7 @@ class LLM_DIS_SM:
         y_std[np.isnan(y_std)] = np.nanmean(y_std)
         y_std[y_std < 1e-5] = 1e-5  # replace small values to avoid division by zero
 
-        return y_mean, y_std, success_rate, tot_cost, tot_tokens, time_taken
+        return y_mean, y_std, success_rate, time_taken
 
     def _evaluate_candidate_points(self, observed_configs, observed_fvals, candidate_configs,
                                    use_context='full_context', use_feature_semantics=True, return_ei=False):
@@ -189,17 +191,17 @@ class LLM_DIS_SM:
 
         response = self._predict(all_prompt_templates, query_examples)
 
-        y_mean, y_std, success_rate, tot_cost, tot_tokens, time_taken = response
+        y_mean, y_std, success_rate, time_taken = response
 
         if self.recalibrator is not None:
             recalibrated_res = self.recalibrator(y_mean, y_std, 0.68)  # 0.68 coverage for 1 std
             y_std = np.abs(recalibrated_res.upper - recalibrated_res.lower) / 2
 
-        all_run_cost += tot_cost
+        # all_run_cost += tot_cost
         all_run_time += time_taken
 
         if not return_ei:
-            return y_mean, y_std, all_run_cost, all_run_time
+            return y_mean, y_std, all_run_time
 
         else:
             # calcualte ei
@@ -213,7 +215,7 @@ class LLM_DIS_SM:
                 Z = delta / y_std
             ei = np.where(y_std > 0, delta * norm.cdf(Z) + y_std * norm.pdf(Z), 0)
 
-            return ei, y_mean, y_std, all_run_cost, all_run_time
+            return ei, y_mean, y_std, all_run_time
 
     def select_query_point(self, observed_configs, observed_fvals, candidate_configs):
         '''Select the next query point using expected improvement.'''
@@ -223,7 +225,7 @@ class LLM_DIS_SM:
             observed_configs = self.warping_transformer.warp(observed_configs)
             candidate_configs = self.warping_transformer.warp(candidate_configs)
 
-        y_mean, y_std, cost, time_taken = self._evaluate_candidate_points(observed_configs, observed_fvals,
+        y_mean, y_std, time_taken = self._evaluate_candidate_points(observed_configs, observed_fvals,
                                                                           candidate_configs)
         if self.lower_is_better:
             best_fval = np.min(observed_fvals.to_numpy())
@@ -245,7 +247,7 @@ class LLM_DIS_SM:
 
         best_point = candidate_configs.iloc[[best_point_index], :]  # return selected point as dataframe not series
 
-        return best_point, cost, time_taken
+        return best_point, time_taken
 
     def generate_response(self, user_message):
         resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])

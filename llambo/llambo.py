@@ -177,14 +177,14 @@ class LLAMBO:
             print('=' * 150)
 
             # select candidate point
-            sel_candidate_point, cost, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
+            sel_candidate_point, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
                                                                                             self.observed_fvals[
                                                                                                 ['score']],
                                                                                             candidate_points)
-            trial_cost += cost
+            # trial_cost += cost
             trial_query_time += time_taken
 
-            self.llm_query_cost.append(trial_cost)
+            # self.llm_query_cost.append(trial_cost)
             self.llm_query_time.append(trial_query_time)
 
             print('=' * 150)
