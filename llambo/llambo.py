@@ -232,4 +232,5 @@ class LLAMBO:
             print('=' * 150)
 
         # returns history of observed configurations and function values
+        print("Optimization complete")
         return self.observed_configs, self.observed_fvals
