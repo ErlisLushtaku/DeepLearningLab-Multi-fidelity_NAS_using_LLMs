@@ -178,9 +178,9 @@ class LLAMBO:
 
             # select candidate point
             sel_candidate_point, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
-                                                                                            self.observed_fvals[
-                                                                                                ['score']],
-                                                                                            candidate_points)
+                                                                                      self.observed_fvals[
+                                                                                          ['score']],
+                                                                                      candidate_points)
             # trial_cost += cost
             trial_query_time += time_taken
 
@@ -234,3 +234,58 @@ class LLAMBO:
         # returns history of observed configurations and function values
         print("Optimization complete")
         return self.observed_configs, self.observed_fvals
+
+    def get_config(self):
+        candidate_points = self.acq_func.get_candidate_points(self.observed_configs,
+                                                              self.observed_fvals[['score']],
+                                                              alpha=self.alpha)
+
+        print('=' * 150)
+        print('EXAMPLE POINTS PROPOSED')
+        print(candidate_points)
+        print('=' * 150)
+
+        # select candidate point
+        sel_candidate_point, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
+                                                                                  self.observed_fvals[
+                                                                                      ['score']],
+                                                                                  candidate_points)
+        print('=' * 150)
+        print('SELECTED CANDIDATE POINT')
+        print(sel_candidate_point)
+        print('=' * 150)
+
+        sel_candidate_point, sel_candidate_fval = self._evaluate_config(sel_candidate_point)
+        self._update_observations(sel_candidate_point, sel_candidate_fval)
+
+        return sel_candidate_point
+
+    def initialize_configs(self, num_samples):
+        init_configs = self.init_f(num_samples)
+
+        assert isinstance(init_configs, list), 'init_f() should return a list of configs (dictionaries)'
+        for item in init_configs:
+            assert isinstance(item, dict), 'init_f() should return a list of configs (dictionaries)'
+
+        init_configs = pd.DataFrame(init_configs)
+        assert init_configs.shape[
+                   0] == self.n_initial_samples, 'init_f() should return n_initial_samples number of configs'
+
+        # create empty pandas dataframe for observed function values
+        self.observed_fvals = pd.DataFrame()
+        self.observed_configs = pd.DataFrame()
+
+        for index, _ in init_configs.iterrows():
+            one_config = init_configs.iloc[[index]]
+            one_config, one_result = self._evaluate_config(one_config)
+
+            if self.observed_fvals.empty:
+                self.observed_fvals = one_result
+            else:
+                self.observed_fvals = pd.concat([self.observed_fvals, one_result], axis=0, ignore_index=True)
+
+            if self.observed_configs.empty:
+                self.observed_configs = one_config
+            else:
+                self.observed_configs = pd.concat([self.observed_configs, one_config], axis=0, ignore_index=True)
+        return init_configs
