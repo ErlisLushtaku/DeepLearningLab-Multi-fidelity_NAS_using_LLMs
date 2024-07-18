@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def convert_LLAMBO_df_to_synetune_dict(config):
     config = config.to_dict()
     dicts = []
@@ -16,3 +19,35 @@ def convert_LLAMBO_df_to_synetune_dict(config):
         dicts.append(original_dict)
 
     return dicts
+
+
+def convert_synetune_dict_to_LLAMBO_df(synetune_dict):
+    if isinstance(synetune_dict, dict):
+        synetune_dict = [synetune_dict]
+
+    op_0_to_1 = []
+    op_0_to_2 = []
+    op_0_to_3 = []
+    op_1_to_2 = []
+    op_1_to_3 = []
+    op_2_to_3 = []
+
+    for item in synetune_dict:
+        op_0_to_1.append(item['hp_x0'])
+        op_0_to_2.append(item['hp_x1'])
+        op_0_to_3.append(item['hp_x2'])
+        op_1_to_2.append(item['hp_x3'])
+        op_1_to_3.append(item['hp_x4'])
+        op_2_to_3.append(item['hp_x5'])
+
+    data = {
+        'op_0_to_1': op_0_to_1,
+        'op_0_to_2': op_0_to_2,
+        'op_0_to_3': op_0_to_3,
+        'op_1_to_2': op_1_to_2,
+        'op_1_to_3': op_1_to_3,
+        'op_2_to_3': op_2_to_3
+    }
+
+    df = pd.DataFrame(data)
+    return df

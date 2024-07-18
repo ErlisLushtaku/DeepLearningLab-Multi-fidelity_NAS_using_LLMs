@@ -43,6 +43,8 @@ class LLAMBO:
         self.n_trials = n_trials
         self.llm_query_cost = []  # list of cost for LLM calls in EACH TRIAL
         self.llm_query_time = []  # list of time taken for LLM calls in EACH TRIAL
+        self.observed_fvals = pd.DataFrame()
+        self.observed_configs = pd.DataFrame()
 
         assert type(shuffle_features) == bool, 'shuffle_features should be a boolean'
         assert type(use_input_warping) == bool, 'use_input_warping should be a boolean'
@@ -100,8 +102,6 @@ class LLAMBO:
                    0] == self.n_initial_samples, 'init_f() should return n_initial_samples number of configs'
 
         # create empty pandas dataframe for observed function values
-        self.observed_fvals = pd.DataFrame()
-        self.observed_configs = pd.DataFrame()
 
         for index, _ in init_configs.iterrows():
             one_config = init_configs.iloc[[index]]
@@ -139,8 +139,13 @@ class LLAMBO:
     def _update_observations(self, new_config, new_fval):
         '''Update the observed configurations and function values.'''
         # append new observations
-        self.observed_configs = pd.concat([self.observed_configs, new_config], axis=0, ignore_index=True)
-        self.observed_fvals = pd.concat([self.observed_fvals, new_fval], axis=0, ignore_index=True)
+        self.observed_configs = pd.concat([self.observed_configs, new_config], axis=0,
+                                          ignore_index=True)
+        new_fval = {
+            'score': [new_fval['metric_valid_error']]
+        }
+        self.observed_fvals = pd.concat([self.observed_fvals, pd.DataFrame(new_fval)], axis=0,
+                                        ignore_index=True)
 
     def optimize(self, test_metric='generalization_score'):
         '''Run the optimization loop.'''
@@ -255,9 +260,6 @@ class LLAMBO:
         print(sel_candidate_point)
         print('=' * 150)
 
-        sel_candidate_point, sel_candidate_fval = self._evaluate_config(sel_candidate_point)
-        self._update_observations(sel_candidate_point, sel_candidate_fval)
-
         return sel_candidate_point
 
     def initialize_configs(self, num_samples):
@@ -271,21 +273,4 @@ class LLAMBO:
         assert init_configs.shape[
                    0] == self.n_initial_samples, 'init_f() should return n_initial_samples number of configs'
 
-        # create empty pandas dataframe for observed function values
-        self.observed_fvals = pd.DataFrame()
-        self.observed_configs = pd.DataFrame()
-
-        for index, _ in init_configs.iterrows():
-            one_config = init_configs.iloc[[index]]
-            one_config, one_result = self._evaluate_config(one_config)
-
-            if self.observed_fvals.empty:
-                self.observed_fvals = one_result
-            else:
-                self.observed_fvals = pd.concat([self.observed_fvals, one_result], axis=0, ignore_index=True)
-
-            if self.observed_configs.empty:
-                self.observed_configs = one_config
-            else:
-                self.observed_configs = pd.concat([self.observed_configs, one_config], axis=0, ignore_index=True)
         return init_configs
