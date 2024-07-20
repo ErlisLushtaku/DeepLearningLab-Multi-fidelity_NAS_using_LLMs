@@ -59,5 +59,4 @@ def convert_synetune_dict_to_LLAMBO_df(synetune_dict):
         'op_2_to_3': op_2_to_3
     }
 
-    df = pd.DataFrame(data)
-    return df
+    return data

@@ -136,16 +136,17 @@ class LLAMBO:
 
         return pd.DataFrame([eval_config]), pd.DataFrame([eval_results])
 
-    def _update_observations(self, new_config, new_fval):
-        '''Update the observed configurations and function values.'''
-        # append new observations
-        self.observed_configs = pd.concat([self.observed_configs, new_config], axis=0,
-                                          ignore_index=True)
-        new_fval = {
-            'score': [new_fval['metric_valid_error']]
-        }
-        self.observed_fvals = pd.concat([self.observed_fvals, pd.DataFrame(new_fval)], axis=0,
-                                        ignore_index=True)
+    def _update_observations(self, new_configs, new_fvals):
+        '''Update the observed configurations and function values with new arrays of data.'''
+        # Convert new_configs directly into a DataFrame
+        self.observed_configs = pd.DataFrame(new_configs)
+
+        # Prepare new_fvals data
+        # Assuming new_fvals is a list of dictionaries where each dictionary has a 'metric_valid_error' key
+        fval_data = {'score': [fval['metric_valid_error'] for fval in new_fvals]}
+
+        # Convert new_fvals into a DataFrame
+        self.observed_fvals = pd.DataFrame(fval_data)
 
     def optimize(self, test_metric='generalization_score'):
         '''Run the optimization loop.'''
