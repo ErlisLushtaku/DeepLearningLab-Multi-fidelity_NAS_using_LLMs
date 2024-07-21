@@ -31,32 +31,33 @@ def convert_LLAMBO_df_to_synetune_dict(config):
     return dicts
 
 
-def convert_synetune_dict_to_LLAMBO_df(synetune_dict):
-    if isinstance(synetune_dict, dict):
-        synetune_dict = [synetune_dict]
+import pandas as pd
 
-    op_0_to_1 = []
-    op_0_to_2 = []
-    op_0_to_3 = []
-    op_1_to_2 = []
-    op_1_to_3 = []
-    op_2_to_3 = []
-
-    for item in synetune_dict:
-        op_0_to_1.append(item['hp_x0'])
-        op_0_to_2.append(item['hp_x1'])
-        op_0_to_3.append(item['hp_x2'])
-        op_1_to_2.append(item['hp_x3'])
-        op_1_to_3.append(item['hp_x4'])
-        op_2_to_3.append(item['hp_x5'])
-
-    data = {
-        'op_0_to_1': op_0_to_1,
-        'op_0_to_2': op_0_to_2,
-        'op_0_to_3': op_0_to_3,
-        'op_1_to_2': op_1_to_2,
-        'op_1_to_3': op_1_to_3,
-        'op_2_to_3': op_2_to_3
-    }
-
-    return data
+def convert_synetune_dict_to_LLAMBO_compatible_format(synetune_dicts):
+    # Check if input is a list of dictionaries
+    if isinstance(synetune_dicts, list):
+        data_list = []
+        for synetune_dict in synetune_dicts:
+            data = {
+                'op_0_to_1': synetune_dict['hp_x0'],
+                'op_0_to_2': synetune_dict['hp_x1'],
+                'op_0_to_3': synetune_dict['hp_x2'],
+                'op_1_to_2': synetune_dict['hp_x3'],
+                'op_1_to_3': synetune_dict['hp_x4'],
+                'op_2_to_3': synetune_dict['hp_x5']
+            }
+            data_list.append(data)
+        # Convert the list of dictionaries to a DataFrame
+        return pd.DataFrame(data_list)
+    else:
+        # Process a single dictionary as before
+        data = {
+            'op_0_to_1': synetune_dicts['hp_x0'],
+            'op_0_to_2': synetune_dicts['hp_x1'],
+            'op_0_to_3': synetune_dicts['hp_x2'],
+            'op_1_to_2': synetune_dicts['hp_x3'],
+            'op_1_to_3': synetune_dicts['hp_x4'],
+            'op_2_to_3': synetune_dicts['hp_x5']
+        }
+        # Convert the dictionary to a DataFrame
+        return data

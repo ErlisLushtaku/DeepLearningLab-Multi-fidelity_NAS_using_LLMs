@@ -139,7 +139,7 @@ class LLAMBO:
     def _update_observations(self, new_configs, new_fvals):
         '''Update the observed configurations and function values with new arrays of data.'''
         # Convert new_configs directly into a DataFrame
-        self.observed_configs = pd.DataFrame(new_configs)
+        self.observed_configs = pd.DataFrame(list(new_configs))
 
         # Prepare new_fvals data
         # Assuming new_fvals is a list of dictionaries where each dictionary has a 'metric_valid_error' key
