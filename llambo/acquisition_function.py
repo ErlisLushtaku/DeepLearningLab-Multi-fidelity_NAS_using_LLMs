@@ -262,7 +262,7 @@ Hyperparameter configuration: {Q}"""
             prefix += f"Recommend a configuration that can achieve the target performance of {jittered_desired_fval:.6f}. "
             if use_context in ['partial_context', 'full_context']:
                 prefix += "Do not recommend categorical choices outside of given lists. Recommend categorical choices with highest possible precision, as requested by the allowed ranges. "
-            prefix += f"Your response must only contain the predicted configuration, in the format ## configuration ##. Please provide a configuration different from the provided ones.\n"
+            prefix += f"Your response must only contain the predicted configuration surrounded by double hashtags (##), in the format ## configuration ##, put the actual configuration in between the hashtags, for example: ## op_0_to_1: avg_pool_3x3, op_0_to_2: skip_connect, op_0_to_3: nor_conv_3x3, op_1_to_2: none, op_1_to_3: avg_pool_3x3, op_2_to_3: nor_conv_1x1 ##. Do not output anything else. Please provide a configuration different from the provided ones.\n"
 
             suffix = """
 Performance: {A}

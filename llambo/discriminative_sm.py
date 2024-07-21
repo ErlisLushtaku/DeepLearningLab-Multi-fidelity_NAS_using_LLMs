@@ -51,26 +51,38 @@ class LLM_DIS_SM:
     def _async_generate(self, few_shot_template, query_example, query_idx):
         '''Generate a response from the LLM async.'''
         user_message = few_shot_template.format(Q=query_example['Q'])
+        responses = []
 
         MAX_RETRIES = 3
 
         resp = None
-        n_preds = int(self.n_gens / self.n_templates) if self.bootstrapping else int(self.n_gens)
-        for retry in range(MAX_RETRIES):
-            try:
-                resp = self.generate_response(user_message)
-                break
-            except Exception as e:
-                print(f'[SM] RETRYING LLM REQUEST {retry + 1}/{MAX_RETRIES}...')
-                print(resp)
-                if retry == MAX_RETRIES - 1:
-                    raise e
-                pass
+        n_preds = int(self.n_gens / self.n_templates)
+        for pred in range(n_preds):
+            for retry in range(MAX_RETRIES):
+                try:
+                    resp = self.generate_response(user_message)
+                    break
+                except Exception as e:
+                    print(f'[SM] RETRYING LLM REQUEST {retry + 1}/{MAX_RETRIES}...')
+                    print(resp)
+                    if retry == MAX_RETRIES - 1:
+                        raise e
+                    pass
 
-        if resp is None:
-            return None
+            if resp is None:
+                return None
+            responses.append(resp)
 
-        return query_idx, resp
+        if responses:
+            first_content = responses[0]["message"]["content"]
+
+            for response in responses[1:]:
+                content_to_add = response["message"]["content"]
+                first_content += content_to_add
+
+            responses[0]["message"]["content"] = first_content
+
+        return query_idx, responses[0]
 
     def _generate_concurrently(self, few_shot_templates, query_examples):
         '''Perform concurrent generation of responses from the LLM async.'''
@@ -123,10 +135,8 @@ class LLM_DIS_SM:
 
                     for gen_text in all_gens_text:
                         gen_pred = re.findall(r"## (-?[\d.]+) ##", gen_text)
-                        if len(gen_pred) == 1:
-                            sample_preds.append(float(gen_pred[0]))
-                        else:
-                            sample_preds.append(np.nan)
+                        for single_prediction in gen_pred:
+                            sample_preds.append(float(single_prediction))
 
                     while len(sample_preds) < self.n_gens:
                         sample_preds.append(np.nan)
@@ -226,7 +236,7 @@ class LLM_DIS_SM:
             candidate_configs = self.warping_transformer.warp(candidate_configs)
 
         y_mean, y_std, time_taken = self._evaluate_candidate_points(observed_configs, observed_fvals,
-                                                                          candidate_configs)
+                                                                    candidate_configs)
         if self.lower_is_better:
             best_fval = np.min(observed_fvals.to_numpy())
             delta = -1 * (y_mean - best_fval)
