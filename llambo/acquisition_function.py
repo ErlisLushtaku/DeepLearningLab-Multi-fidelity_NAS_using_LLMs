@@ -179,6 +179,7 @@ class LLM_ACQ:
             task_context = self.task_context
             model = task_context['model']
             task = task_context['task']
+            image_size = task_context['image_size']
             tot_feats = task_context['tot_feats']
             cat_feats = task_context['cat_feats']
             num_feats = task_context['num_feat']
@@ -205,7 +206,7 @@ Hyperparameter configuration: {Q}"""
                     prefix += f" The model is evaluated on a tabular {task} task."
                 else:
                     raise Exception
-                prefix += f" The dataset contains {num_samples} images and each image has height 32, width 32, and 3 channels."
+                prefix += f" The dataset contains {num_samples} images and each image has {image_size}."
             prefix += f" The allowable choices for the architectures are:\n"
             for i, (hyperparameter, constraint) in enumerate(hyperparameter_constraints.items()):
                 if constraint[0] == 'float':
@@ -455,8 +456,11 @@ Hyperparameter configuration:"""
             tot_tokens = 0
             # loop through n_coroutine async calls
             for response in llm_responses:
-                response_content = response.split('##')[1].strip()
-                candidate_points.append(self._convert_to_json(response_content))
+                try:
+                    response_content = response.split('##')[1].strip()
+                    candidate_points.append(self._convert_to_json(response_content))
+                except Exception as e:
+                    continue
 
             proposed_points = self._filter_candidate_points(observed_configs.to_dict(orient='records'),
                                                             candidate_points)
@@ -486,8 +490,19 @@ Hyperparameter configuration:"""
         return filtered_candidate_points
 
     def generate_response(self, user_message):
-        resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
-        return resp
+        MAX_RETRIES = 3
+
+        response_content = ''
+        for i in range(MAX_RETRIES):
+            try:
+                response = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
+                response_content = response['message']['content'].split('##')[1].strip()
+            except Exception:
+                continue
+
+            return response_content
+
+        return None
 
     def generate_responses(self, prompt_templates, query_templates):
         tasks = []
@@ -501,7 +516,9 @@ Hyperparameter configuration:"""
 
         for idx, response in enumerate(llm_response):
             if response is not None:
-                resp = response['message']['content']
-                results[idx] = resp
-
+                try:
+                    resp = response['message']['content']
+                    results[idx] = resp
+                except Exception:
+                    continue
         return results  # format [(resp, tot_cost, tot_tokens), None, (resp, tot_cost, tot_tokens)]
