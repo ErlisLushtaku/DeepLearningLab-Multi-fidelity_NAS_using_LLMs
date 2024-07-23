@@ -1,5 +1,3 @@
-from ConfigSpace import Configuration
-
 from llambo.discriminative_sm import LLM_DIS_SM
 from llambo.generative_sm import LLM_GEN_SM
 from llambo.acquisition_function import LLM_ACQ
@@ -43,8 +41,6 @@ class LLAMBO:
         self.n_trials = n_trials
         self.llm_query_cost = []  # list of cost for LLM calls in EACH TRIAL
         self.llm_query_time = []  # list of time taken for LLM calls in EACH TRIAL
-        self.observed_fvals = pd.DataFrame()
-        self.observed_configs = pd.DataFrame()
 
         assert type(shuffle_features) == bool, 'shuffle_features should be a boolean'
         assert type(use_input_warping) == bool, 'use_input_warping should be a boolean'
@@ -102,6 +98,8 @@ class LLAMBO:
                    0] == self.n_initial_samples, 'init_f() should return n_initial_samples number of configs'
 
         # create empty pandas dataframe for observed function values
+        self.observed_fvals = pd.DataFrame()
+        self.observed_configs = pd.DataFrame()
 
         for index, _ in init_configs.iterrows():
             one_config = init_configs.iloc[[index]]
@@ -173,9 +171,11 @@ class LLAMBO:
 
             start_time = time.time()
             # get candidate point
-            candidate_points = self.acq_func.get_candidate_points(self.observed_configs,
-                                                                  self.observed_fvals[['score']],
-                                                                  alpha=self.alpha)
+            candidate_points, cost, time_taken = self.acq_func.get_candidate_points(self.observed_configs,
+                                                                                    self.observed_fvals[['score']],
+                                                                                    alpha=self.alpha)
+            trial_cost += cost
+            trial_query_time += time_taken
 
             print('=' * 150)
             print('EXAMPLE POINTS PROPOSED')
@@ -183,14 +183,14 @@ class LLAMBO:
             print('=' * 150)
 
             # select candidate point
-            sel_candidate_point, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
-                                                                                      self.observed_fvals[
-                                                                                          ['score']],
-                                                                                      candidate_points)
-            # trial_cost += cost
+            sel_candidate_point, cost, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
+                                                                                            self.observed_fvals[
+                                                                                                ['score']],
+                                                                                            candidate_points)
+            trial_cost += cost
             trial_query_time += time_taken
 
-            # self.llm_query_cost.append(trial_cost)
+            self.llm_query_cost.append(trial_cost)
             self.llm_query_time.append(trial_query_time)
 
             print('=' * 150)
@@ -238,7 +238,6 @@ class LLAMBO:
             print('=' * 150)
 
         # returns history of observed configurations and function values
-        print("Optimization complete")
         return self.observed_configs, self.observed_fvals
 
     def get_config(self):

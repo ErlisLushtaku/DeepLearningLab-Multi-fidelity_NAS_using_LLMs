@@ -48,43 +48,56 @@ class LLM_DIS_SM:
 
         assert type(self.shuffle_features) == bool, 'shuffle_features must be a boolean'
 
-    def _async_generate(self, few_shot_template, query_example, query_idx):
+    async def _async_generate(self, few_shot_template, query_example, query_idx):
         '''Generate a response from the LLM async.'''
+        message = []
+        message.append({"role": "system", "content": "You are an AI assistant that helps people find information."})
         user_message = few_shot_template.format(Q=query_example['Q'])
-        responses = []
+        message.append({"role": "user", "content": user_message})
 
         MAX_RETRIES = 3
 
-        resp = None
-        n_preds = int(self.n_gens / self.n_templates)
-        for pred in range(n_preds):
+        async with ClientSession(trust_env=True) as session:
+            openai.aiosession.set(session)
+
+            resp = None
+            n_preds = int(self.n_gens / self.n_templates) if self.bootstrapping else int(self.n_gens)
             for retry in range(MAX_RETRIES):
                 try:
-                    resp = self.generate_response(user_message)
+                    start_time = time.time()
+                    self.rate_limiter.add_request(request_text=user_message, current_time=start_time)
+                    resp = await openai.ChatCompletion.acreate(
+                        engine=self.chat_engine,
+                        messages=message,
+                        temperature=0.7,
+                        max_tokens=8,
+                        top_p=0.95,
+                        n=max(n_preds, 3),  # e.g. for 5 templates, get 2 generations per template
+                        request_timeout=10
+                    )
+                    self.rate_limiter.add_request(request_token_count=resp['usage']['total_tokens'],
+                                                  current_time=time.time())
                     break
                 except Exception as e:
                     print(f'[SM] RETRYING LLM REQUEST {retry + 1}/{MAX_RETRIES}...')
                     print(resp)
                     if retry == MAX_RETRIES - 1:
+                        await openai.aiosession.get().close()
                         raise e
                     pass
 
-            if resp is None:
-                return None
-            responses.append(resp)
+        await openai.aiosession.get().close()
 
-        if responses:
-            first_content = responses[0]["message"]["content"]
+        if resp is None:
+            return None
 
-            for response in responses[1:]:
-                content_to_add = response["message"]["content"]
-                first_content += content_to_add
+        tot_tokens = resp['usage']['total_tokens']
+        tot_cost = 0.0015 * (resp['usage']['prompt_tokens'] / 1000) + 0.002 * (
+                    resp['usage']['completion_tokens'] / 1000)
 
-            responses[0]["message"]["content"] = first_content
+        return query_idx, resp, tot_cost, tot_tokens
 
-        return query_idx, responses[0]
-
-    def _generate_concurrently(self, few_shot_templates, query_examples):
+    async def _generate_concurrently(self, few_shot_templates, query_examples):
         '''Perform concurrent generation of responses from the LLM async.'''
 
         coroutines = []
@@ -92,29 +105,31 @@ class LLM_DIS_SM:
             for query_idx, query_example in enumerate(query_examples):
                 coroutines.append(self._async_generate(template, query_example, query_idx))
 
+        tasks = [asyncio.create_task(c) for c in coroutines]
+
         results = [[] for _ in range(len(query_examples))]  # nested list
 
-        llm_response = coroutines
+        llm_response = await asyncio.gather(*tasks)
 
         for response in llm_response:
             if response is not None:
-                query_idx, resp = response
-                results[query_idx].append([resp])
+                query_idx, resp, tot_cost, tot_tokens = response
+                results[query_idx].append([resp, tot_cost, tot_tokens])
 
         return results  # format [(resp, tot_cost, tot_tokens), None, (resp, tot_cost, tot_tokens)]
 
-    def _predict(self, all_prompt_templates, query_examples):
+    async def _predict(self, all_prompt_templates, query_examples):
         start = time.time()
         all_preds = []
-        # tot_tokens = 0
-        # tot_cost = 0
+        tot_tokens = 0
+        tot_cost = 0
 
         bool_pred_returned = []
 
         # make predictions in chunks of 5, for each chunk make concurent calls
         for i in range(0, len(query_examples), 5):
             query_chunk = query_examples[i:i + 5]
-            chunk_results = self._generate_concurrently(all_prompt_templates, query_chunk)
+            chunk_results = await self._generate_concurrently(all_prompt_templates, query_chunk)
             bool_pred_returned.extend(
                 [1 if x is not None else 0 for x in chunk_results])  # track effective number of predictions returned
 
@@ -123,26 +138,20 @@ class LLM_DIS_SM:
                     sample_preds = [np.nan] * self.n_gens
                 else:
                     sample_preds = []
-                    # template_response = [template_response for template_response in sample_response]
-                    # x = [x for x in template_response[0]]
-                    # x = x[0]
-                    # all_gens_text_test = x['message']['content']
-                    all_gens_text = [response[0]['message']['content']
-                                     for response in sample_response
-                                     if 'message' in response[0]]
-                    # all_gens_text = [x['message']['content'] for template_response in sample_response for x in
-                    #                  template_response[0]['choices']]  # fuarr this is some high level programming
-
+                    all_gens_text = [x['message']['content'] for template_response in sample_response for x in
+                                     template_response[0]['choices']]  # fuarr this is some high level programming
                     for gen_text in all_gens_text:
                         gen_pred = re.findall(r"## (-?[\d.]+) ##", gen_text)
-                        for single_prediction in gen_pred:
-                            sample_preds.append(float(single_prediction))
+                        if len(gen_pred) == 1:
+                            sample_preds.append(float(gen_pred[0]))
+                        else:
+                            sample_preds.append(np.nan)
 
                     while len(sample_preds) < self.n_gens:
                         sample_preds.append(np.nan)
 
-                    # tot_cost += sum([x[1] for x in sample_response])
-                    # tot_tokens += sum([x[2] for x in sample_response])
+                    tot_cost += sum([x[1] for x in sample_response])
+                    tot_tokens += sum([x[2] for x in sample_response])
                 all_preds.append(sample_preds)
 
         end = time.time()
@@ -159,10 +168,10 @@ class LLM_DIS_SM:
         y_std[np.isnan(y_std)] = np.nanmean(y_std)
         y_std[y_std < 1e-5] = 1e-5  # replace small values to avoid division by zero
 
-        return y_mean, y_std, success_rate, time_taken
+        return y_mean, y_std, success_rate, tot_cost, tot_tokens, time_taken
 
-    def _evaluate_candidate_points(self, observed_configs, observed_fvals, candidate_configs,
-                                   use_context='full_context', use_feature_semantics=True, return_ei=False):
+    async def _evaluate_candidate_points(self, observed_configs, observed_fvals, candidate_configs,
+                                         use_context='full_context', use_feature_semantics=True, return_ei=False):
         '''Evaluate candidate points using the LLM model.'''
 
         if self.prompt_setting is not None:
@@ -175,7 +184,7 @@ class LLM_DIS_SM:
         time_taken = 0
 
         if self.use_recalibration and self.recalibrator is None:
-            recalibrator, tot_cost, time_taken = self._get_recalibrator(observed_configs, observed_fvals)
+            recalibrator, tot_cost, time_taken = await self._get_recalibrator(observed_configs, observed_fvals)
             if recalibrator is not None:
                 self.recalibrator = recalibrator
             else:
@@ -199,19 +208,19 @@ class LLM_DIS_SM:
         print(f'Number of query_examples: {len(query_examples)}')
         print(all_prompt_templates[0].format(Q=query_examples[0]['Q']))
 
-        response = self._predict(all_prompt_templates, query_examples)
+        response = await self._predict(all_prompt_templates, query_examples)
 
-        y_mean, y_std, success_rate, time_taken = response
+        y_mean, y_std, success_rate, tot_cost, tot_tokens, time_taken = response
 
         if self.recalibrator is not None:
             recalibrated_res = self.recalibrator(y_mean, y_std, 0.68)  # 0.68 coverage for 1 std
             y_std = np.abs(recalibrated_res.upper - recalibrated_res.lower) / 2
 
-        # all_run_cost += tot_cost
+        all_run_cost += tot_cost
         all_run_time += time_taken
 
         if not return_ei:
-            return y_mean, y_std, all_run_time
+            return y_mean, y_std, all_run_cost, all_run_time
 
         else:
             # calcualte ei
@@ -225,7 +234,7 @@ class LLM_DIS_SM:
                 Z = delta / y_std
             ei = np.where(y_std > 0, delta * norm.cdf(Z) + y_std * norm.pdf(Z), 0)
 
-            return ei, y_mean, y_std, all_run_time
+            return ei, y_mean, y_std, all_run_cost, all_run_time
 
     def select_query_point(self, observed_configs, observed_fvals, candidate_configs):
         '''Select the next query point using expected improvement.'''
@@ -235,8 +244,7 @@ class LLM_DIS_SM:
             observed_configs = self.warping_transformer.warp(observed_configs)
             candidate_configs = self.warping_transformer.warp(candidate_configs)
 
-        y_mean, y_std, time_taken = self._evaluate_candidate_points(observed_configs, observed_fvals,
-                                                                    candidate_configs)
+        y_mean, y_std, cost, time_taken = asyncio.run(self._evaluate_candidate_points(observed_configs, observed_fvals, candidate_configs))
         if self.lower_is_better:
             best_fval = np.min(observed_fvals.to_numpy())
             delta = -1 * (y_mean - best_fval)
@@ -257,7 +265,7 @@ class LLM_DIS_SM:
 
         best_point = candidate_configs.iloc[[best_point_index], :]  # return selected point as dataframe not series
 
-        return best_point, time_taken
+        return best_point, cost, time_taken
 
     def generate_response(self, user_message):
         resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])

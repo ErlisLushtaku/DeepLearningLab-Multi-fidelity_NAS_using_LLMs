@@ -10,12 +10,11 @@ from aiohttp import ClientSession
 from langchain import FewShotPromptTemplate
 from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
-import ollama
 
-openai.api_type = ""
-openai.api_version = ""
-openai.api_base = ""
-openai.api_key = ""
+openai.api_type = os.environ["OPENAI_API_TYPE"]
+openai.api_version = os.environ["OPENAI_API_VERSION"]
+openai.api_base = os.environ["OPENAI_API_BASE"]
+openai.api_key = os.environ["OPENAI_API_KEY"]
 
 
 class LLM_ACQ:
@@ -120,7 +119,7 @@ class LLM_ACQ:
                         lower_bound = self.task_context['hyperparameter_constraints'][hyperparameter_names[i]][2][0]
                     else:
                         lower_bound = self.task_context['hyperparameter_constraints'][hyperparameter_names[i]][2][1]
-                    # n_dp = self._count_decimal_places(lower_bound)
+                    n_dp = self._count_decimal_places(lower_bound)
                     value = row[i]
                     if self.apply_warping:
                         if hyp_type == 'int' and hyp_transform != 'log':
@@ -134,7 +133,7 @@ class LLM_ACQ:
 
                     else:
                         if hyp_type == 'int':
-                            row_string += value
+                            row_string += str(int(value))
                         elif hyp_type in ['float', 'ordinal']:
                             row_string += f'{value:.{n_dp}f}'
                         else:
@@ -179,10 +178,9 @@ class LLM_ACQ:
             task_context = self.task_context
             model = task_context['model']
             task = task_context['task']
-            image_size = task_context['image_size']
             tot_feats = task_context['tot_feats']
             cat_feats = task_context['cat_feats']
-            num_feats = task_context['num_feat']
+            num_feats = task_context['num_feats']
             n_classes = task_context['n_classes']
             metric = 'mean squared error' if task_context['metric'] == 'neg_mean_squared_error' else task_context[
                 'metric']
@@ -198,16 +196,16 @@ Hyperparameter configuration: {Q}"""
                 template=example_template
             )
 
-            prefix = f"The following are examples of performance of a {model} measured in {metric} and the corresponding model architecture configurations."
+            prefix = f"The following are examples of performance of a {model} measured in {metric} and the corresponding model hyperparameter configurations."
             if use_context == 'full_context':
                 if task == 'classification':
-                    prefix += f" The model is evaluated on a image {task} task containing {n_classes} classes."
+                    prefix += f" The model is evaluated on a tabular {task} task containing {n_classes} classes."
                 elif task == 'regression':
                     prefix += f" The model is evaluated on a tabular {task} task."
                 else:
                     raise Exception
-                prefix += f" The dataset contains {num_samples} images and each image has {image_size}."
-            prefix += f" The allowable choices for the architectures are:\n"
+                prefix += f" The tabular dataset contains {num_samples} samples and {tot_feats} features ({cat_feats} categorical, {num_feats} numerical)."
+            prefix += f" The allowable ranges for the hyperparameters are:\n"
             for i, (hyperparameter, constraint) in enumerate(hyperparameter_constraints.items()):
                 if constraint[0] == 'float':
                     # number of decimal places!!
@@ -239,7 +237,7 @@ Hyperparameter configuration: {Q}"""
                         n_dp = 0
 
                     if use_feature_semantics:
-                        prefix += f"- {hyperparameter}: [{constraint[2][0]}, {constraint[2][1]}, {constraint[2][2]}, {constraint[2][3]}, {constraint[2][4]}]"
+                        prefix += f"- {hyperparameter}: [{lower_bound:.{n_dp}f}, {upper_bound:.{n_dp}f}]"
                     else:
                         prefix += f"- X{i + 1}: [{lower_bound:.{n_dp}f}, {upper_bound:.{n_dp}f}]"
 
@@ -256,14 +254,13 @@ Hyperparameter configuration: {Q}"""
                     prefix += f" (ordinal, must take value in {constraint[2]})"
 
                 else:
-                    prefix += f"- {hyperparameter}: [{constraint[2][0]}, {constraint[2][1]}, {constraint[2][2]}, {constraint[2][3]}, {constraint[2][4]}]"
-                    prefix += f" (categorical)"
+                    raise Exception('Unknown hyperparameter value type')
 
                 prefix += "\n"
             prefix += f"Recommend a configuration that can achieve the target performance of {jittered_desired_fval:.6f}. "
             if use_context in ['partial_context', 'full_context']:
-                prefix += "Do not recommend categorical choices outside of given lists. Recommend categorical choices with highest possible precision, as requested by the allowed ranges. "
-            prefix += f"Your response must only contain the predicted configuration surrounded by double hashtags (##), in the format ## configuration ##, put the actual configuration in between the hashtags, for example: ## op_0_to_1: avg_pool_3x3, op_0_to_2: skip_connect, op_0_to_3: nor_conv_3x3, op_1_to_2: none, op_1_to_3: avg_pool_3x3, op_2_to_3: nor_conv_1x1 ##. Do not output anything else. Please provide a configuration different from the provided ones.\n"
+                prefix += "Do not recommend values at the minimum or maximum of allowable range, do not recommend rounded values. Recommend values with highest possible precision, as requested by the allowed ranges. "
+            prefix += f"Your response must only contain the predicted configuration, in the format ## configuration ##.\n"
 
             suffix = """
 Performance: {A}
@@ -325,7 +322,7 @@ Hyperparameter configuration:"""
 
         tot_tokens = resp['usage']['total_tokens']
         tot_cost = 0.0015 * (resp['usage']['prompt_tokens'] / 1000) + 0.002 * (
-                resp['usage']['completion_tokens'] / 1000)
+                    resp['usage']['completion_tokens'] / 1000)
 
         return resp, tot_cost, tot_tokens
 
@@ -359,17 +356,53 @@ Hyperparameter configuration:"""
         response_json = {}
         for pair in pairs:
             key, value = [x.strip() for x in pair.split(':')]
-            response_json[key] = value
+            response_json[key] = float(value)
 
         return response_json
 
     def _filter_candidate_points(self, observed_points, candidate_points, precision=8):
         '''Filter candidate points that already exist in observed points. Also remove duplicates.'''
         # drop points that already exist in observed points
-        observed_tuples = [tuple(sorted(d.items())) for d in observed_points]
+        rounded_observed = [{key: round(value, precision) for key, value in d.items()} for d in observed_points]
+        rounded_candidate = [{key: round(value, precision) for key, value in d.items()} for d in candidate_points]
+        filtered_candidates = [x for i, x in enumerate(candidate_points) if
+                               rounded_candidate[i] not in rounded_observed]
 
-        # Create a new list for the filtered candidate points
-        filtered_candidates = [d for d in candidate_points if tuple(sorted(d.items())) not in observed_tuples]
+        def is_within_range(value, allowed_range):
+            """Check if a value is within an allowed range."""
+            value_type, transform, search_range = allowed_range
+            if value_type == 'int':
+                [min_val, max_val] = search_range
+                if transform == 'log' and self.apply_warping:
+                    min_val = np.log10(min_val)
+                    max_val = np.log10(max_val)
+                    return min_val <= value <= max_val
+                else:
+                    return min_val <= value <= max_val and int(value) == value
+            elif value_type == 'float':  # THIS MIGHT NEED TO CHANGE, RIGHT NOW IT CAN"T SIT ON THE BOUNDARY
+                [min_val, max_val] = search_range
+                if transform == 'log' and self.apply_warping:
+                    min_val = np.log10(min_val)
+                    max_val = np.log10(max_val)
+                return min_val <= value <= max_val
+            elif value_type == 'ordinal':
+                # check that value is in allowed range up to 2 decimal places
+                return any(math.isclose(value, x, abs_tol=1e-2) for x in allowed_range[2])
+            else:
+                raise Exception('Unknown hyperparameter value type')
+
+        def is_dict_within_ranges(d, ranges_dict):
+            """Check if all values in a dictionary are within their respective allowable ranges."""
+            return all(key in ranges_dict and is_within_range(value, ranges_dict[key]) for key, value in d.items())
+
+        def filter_dicts_by_ranges(dict_list, ranges_dict):
+            """Return only those dictionaries where all values are within their respective allowable ranges."""
+            return [d for d in dict_list if is_dict_within_ranges(d, ranges_dict)]
+
+        # check that constraints are satisfied
+        hyperparameter_constraints = self.task_context['hyperparameter_constraints']
+        filtered_candidates = filter_dicts_by_ranges(filtered_candidates, hyperparameter_constraints)
+
         filtered_candidates = pd.DataFrame(filtered_candidates)
         # drop duplicates
         filtered_candidates = filtered_candidates.drop_duplicates()
@@ -449,18 +482,26 @@ Hyperparameter configuration:"""
 
         retry = 0
         while number_candidate_points < 5:
-            llm_responses = self.generate_responses(prompt_templates, query_templates)
+            llm_responses = asyncio.run(self._async_generate_concurrently(prompt_templates, query_templates))
 
             candidate_points = []
             tot_cost = 0
             tot_tokens = 0
             # loop through n_coroutine async calls
             for response in llm_responses:
-                try:
-                    response_content = response.split('##')[1].strip()
-                    candidate_points.append(self._convert_to_json(response_content))
-                except Exception as e:
+                if response is None:
                     continue
+                # loop through n_gen responses
+                for response_message in response[0]['choices']:
+                    response_content = response_message['message']['content']
+                    try:
+                        response_content = response_content.split('##')[1].strip()
+                        candidate_points.append(self._convert_to_json(response_content))
+                    except:
+                        print(response_content)
+                        continue
+                tot_cost += response[1]
+                tot_tokens += response[2]
 
             proposed_points = self._filter_candidate_points(observed_configs.to_dict(orient='records'),
                                                             candidate_points)
@@ -471,15 +512,15 @@ Hyperparameter configuration:"""
                   f'number of accepted candidate points: {filtered_candidate_points.shape[0]}')
 
             retry += 1
-            if retry > 5:
+            if retry > 3:
                 print(f'Desired fval: {desired_fval:.6f}')
                 print(f'Number of proposed candidate points: {len(candidate_points)}')
                 print(f'Number of accepted candidate points: {filtered_candidate_points.shape[0]}')
-                # if len(candidate_points) > 5:
-                #     filtered_candidate_points = pd.DataFrame(candidate_points)
-                #     break
-                # else:
-                #     raise Exception('LLM failed to generate candidate points')
+                if len(candidate_points) > 5:
+                    filtered_candidate_points = pd.DataFrame(candidate_points)
+                    break
+                else:
+                    raise Exception('LLM failed to generate candidate points')
 
         if self.warping_transformer is not None:
             filtered_candidate_points = self.warping_transformer.unwarp(filtered_candidate_points)
@@ -487,38 +528,4 @@ Hyperparameter configuration:"""
         end_time = time.time()
         time_taken = end_time - start_time
 
-        return filtered_candidate_points
-
-    def generate_response(self, user_message):
-        MAX_RETRIES = 3
-
-        response_content = ''
-        for i in range(MAX_RETRIES):
-            try:
-                response = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
-                response_content = response['message']['content'].split('##')[1].strip()
-            except Exception:
-                continue
-
-            return response_content
-
-        return None
-
-    def generate_responses(self, prompt_templates, query_templates):
-        tasks = []
-        for (prompt_template, query_template) in zip(prompt_templates, query_templates):
-            tasks.append(self.generate_response(prompt_template.format(A=query_template[0]['A'])))
-
-        assert len(tasks) == int(self.n_templates)
-        results = [None] * len(tasks)
-
-        llm_response = tasks
-
-        for idx, response in enumerate(llm_response):
-            if response is not None:
-                try:
-                    resp = response['message']['content']
-                    results[idx] = resp
-                except Exception:
-                    continue
-        return results  # format [(resp, tot_cost, tot_tokens), None, (resp, tot_cost, tot_tokens)]
+        return filtered_candidate_points, tot_cost, time_taken
