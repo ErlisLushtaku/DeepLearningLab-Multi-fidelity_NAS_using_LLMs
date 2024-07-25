@@ -46,14 +46,14 @@ class LLM_GEN_SM:
                 try:
                     start_time = time.time()
                     self.rate_limiter.add_request(request_text=prompt, current_time=start_time)
-                    resp = await openai.Completion.acreate(
+                    resp = await openai.Completion.create(
                         model="gpt-3.5-turbo-instruct",
                         prompt=prompt,
                         temperature=0.7,
                         max_tokens=8,
                         top_p=0.95,
                         n=max(n_preds, 3),            # e.g. for 5 templates, get 2 generations per template
-                        request_timeout=10,
+                        timeout=10,
                         logprobs=5,
                     )
                     self.rate_limiter.add_request(request_token_count=resp['usage']['total_tokens'], current_time=time.time())
@@ -137,7 +137,7 @@ class LLM_GEN_SM:
                 if not sample_response:     # if sample prediction is an empty list :(
                     sample_preds = [np.nan] * self.n_gens
                 else:
-                    all_raw_response = [x['logprobs'] for template_response in sample_response for x in template_response[0]['choices'] ]        # fuarr this is some high level programming
+                    all_raw_response = [x['logprobs'] for template_response in sample_response for x in template_response.choices[0] ]        # fuarr this is some high level programming
                     sample_preds = self.process_response(all_raw_response)
                     tot_cost += sum([x[1] for x in sample_response])
                     tot_tokens += sum([x[2] for x in sample_response])

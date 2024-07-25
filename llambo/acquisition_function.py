@@ -10,15 +10,16 @@ from aiohttp import ClientSession
 from langchain import FewShotPromptTemplate
 from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
+from openai import OpenAI
 
-openai.api_type = os.environ["OPENAI_API_TYPE"]
-openai.api_version = os.environ["OPENAI_API_VERSION"]
-openai.api_base = os.environ["OPENAI_API_BASE"]
-openai.api_key = os.environ["OPENAI_API_KEY"]
+openai.api_type = ''
+openai.api_version = ''
+openai.api_base = ''
+openai.api_key = ''
 
 
 class LLM_ACQ:
-    def __init__(self, task_context, n_candidates, n_templates, lower_is_better,
+    def __init__(self, task_context, n_candidates, n_templates, lower_is_better, client,
                  jitter=False, rate_limiter=None, warping_transformer=None, chat_engine=None,
                  prompt_setting=None, shuffle_features=False):
         '''Initialize the LLM Acquisition function.'''
@@ -41,6 +42,7 @@ class LLM_ACQ:
         self.chat_engine = chat_engine
         self.prompt_setting = prompt_setting
         self.shuffle_features = shuffle_features
+        self.client = client
 
         assert type(self.shuffle_features) == bool, 'shuffle_features must be a boolean'
 
@@ -298,15 +300,25 @@ Hyperparameter configuration:"""
                 try:
                     start_time = time.time()
                     self.rate_limiter.add_request(request_text=user_message, current_time=start_time)
-                    resp = await openai.ChatCompletion.acreate(
-                        engine=self.chat_engine,
+
+                    resp = await self.client.chat.completions.create(
+                        model=self.chat_engine,
                         messages=message,
                         temperature=0.8,
                         max_tokens=500,
                         top_p=0.95,
                         n=self.n_gens,
-                        request_timeout=10
+                        timeout=10
                     )
+                    # resp = await openai.ChatCompletion.acreate(
+                    #     engine=self.chat_engine,
+                    #     messages=message,
+                    #     temperature=0.8,
+                    #     max_tokens=500,
+                    #     top_p=0.95,
+                    #     n=self.n_gens,
+                    #     request_timeout=10
+                    # )
                     self.rate_limiter.add_request(request_token_count=resp['usage']['total_tokens'],
                                                   current_time=start_time)
                     break
@@ -492,8 +504,9 @@ Hyperparameter configuration:"""
                 if response is None:
                     continue
                 # loop through n_gen responses
-                for response_message in response[0]['choices']:
-                    response_content = response_message['message']['content']
+
+                for response_message in response.choices[0]:
+                    response_content = response_message.message.content
                     try:
                         response_content = response_content.split('##')[1].strip()
                         candidate_points.append(self._convert_to_json(response_content))

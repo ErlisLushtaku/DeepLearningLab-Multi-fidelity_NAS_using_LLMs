@@ -16,7 +16,7 @@ openai.api_key = ""
 
 
 class LLM_DIS_SM:
-    def __init__(self, task_context, n_gens, lower_is_better,
+    def __init__(self, task_context, n_gens, lower_is_better, client,
                  bootstrapping=False, n_templates=1,
                  use_recalibration=False,
                  rate_limiter=None, warping_transformer=None,
@@ -45,6 +45,7 @@ class LLM_DIS_SM:
         self.verbose = verbose
         self.prompt_setting = prompt_setting
         self.shuffle_features = shuffle_features
+        self.client = client
 
         assert type(self.shuffle_features) == bool, 'shuffle_features must be a boolean'
 
@@ -66,15 +67,24 @@ class LLM_DIS_SM:
                 try:
                     start_time = time.time()
                     self.rate_limiter.add_request(request_text=user_message, current_time=start_time)
-                    resp = await openai.ChatCompletion.acreate(
-                        engine=self.chat_engine,
+                    resp = await self.client.chat.completions.create(
+                        model=self.chat_engine,
                         messages=message,
                         temperature=0.7,
                         max_tokens=8,
                         top_p=0.95,
                         n=max(n_preds, 3),  # e.g. for 5 templates, get 2 generations per template
-                        request_timeout=10
+                        timeout=10
                     )
+                    # resp = await openai.ChatCompletion.acreate(
+                    #     engine=self.chat_engine,
+                    #     messages=message,
+                    #     temperature=0.7,
+                    #     max_tokens=8,
+                    #     top_p=0.95,
+                    #     n=max(n_preds, 3),  # e.g. for 5 templates, get 2 generations per template
+                    #     request_timeout=10
+                    # )
                     self.rate_limiter.add_request(request_token_count=resp['usage']['total_tokens'],
                                                   current_time=time.time())
                     break
@@ -137,9 +147,10 @@ class LLM_DIS_SM:
                 if not sample_response:  # if sample prediction is an empty list :(
                     sample_preds = [np.nan] * self.n_gens
                 else:
+
                     sample_preds = []
-                    all_gens_text = [x['message']['content'] for template_response in sample_response for x in
-                                     template_response[0]['choices']]  # fuarr this is some high level programming
+                    all_gens_text = [x.message.content for template_response in sample_response for x in
+                                     template_response.choices[0]]  # fuarr this is some high level programming
                     for gen_text in all_gens_text:
                         gen_pred = re.findall(r"## (-?[\d.]+) ##", gen_text)
                         if len(gen_pred) == 1:
