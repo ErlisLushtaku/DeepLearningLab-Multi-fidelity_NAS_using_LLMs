@@ -1,6 +1,3 @@
-import os
-import random
-import math
 import time
 import openai
 import asyncio
@@ -12,16 +9,11 @@ from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
 import ollama
 
-openai.api_type = ""
-openai.api_version = ""
-openai.api_base = ""
-openai.api_key = ""
-
 
 class LLM_ACQ:
     def __init__(self, task_context, n_candidates, n_templates, lower_is_better,
                  jitter=False, rate_limiter=None, warping_transformer=None, chat_engine=None,
-                 prompt_setting=None, shuffle_features=False):
+                 prompt_setting=None, shuffle_features=False, client=None, ):
         '''Initialize the LLM Acquisition function.'''
         self.task_context = task_context
         self.n_candidates = n_candidates
@@ -42,6 +34,7 @@ class LLM_ACQ:
         self.chat_engine = chat_engine
         self.prompt_setting = prompt_setting
         self.shuffle_features = shuffle_features
+        self.client = client
 
         assert type(self.shuffle_features) == bool, 'shuffle_features must be a boolean'
 
@@ -262,7 +255,7 @@ Hyperparameter configuration: {Q}"""
             prefix += f"Recommend a configuration that can achieve the target performance of {jittered_desired_fval:.6f}. "
             if use_context in ['partial_context', 'full_context']:
                 prefix += "Do not recommend categorical choices outside of given lists. Recommend categorical choices with highest possible precision, as requested by the allowed ranges. "
-            prefix += f"Your response must only contain the predicted configuration, in the format ## configuration ##. Please provide a configuration different from the provided ones.\n"
+            prefix += f"Your response must only contain the predicted configuration surrounded by double hashtags (##), in the format ## configuration ##, put the actual configuration in between the hashtags, for example: ## op_0_to_1: avg_pool_3x3, op_0_to_2: skip_connect, op_0_to_3: nor_conv_3x3, op_1_to_2: none, op_1_to_3: avg_pool_3x3, op_2_to_3: nor_conv_1x1 ##. Do not output anything else. Please provide a configuration different from the provided ones.\n"
 
             suffix = """
 Performance: {A}
@@ -486,8 +479,21 @@ Hyperparameter configuration:"""
         return filtered_candidate_points
 
     def generate_response(self, user_message):
-        resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
-        return resp
+        # resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
+        messages = []
+        messages.append({"role": "system", "content": "You are an AI assistant that helps people find information."})
+        messages.append({"role": "user", "content": user_message})
+
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4000,
+            top_p=0.95,
+            n=max(5, 3),  # e.g. for 5 templates, get 2 generations per template
+            timeout=100
+        )
+        return response
 
     def generate_responses(self, prompt_templates, query_templates):
         tasks = []
@@ -501,7 +507,7 @@ Hyperparameter configuration:"""
 
         for idx, response in enumerate(llm_response):
             if response is not None:
-                resp = response['message']['content']
+                resp = response.choices[0].message.content
                 results[idx] = resp
 
         return results  # format [(resp, tot_cost, tot_tokens), None, (resp, tot_cost, tot_tokens)]

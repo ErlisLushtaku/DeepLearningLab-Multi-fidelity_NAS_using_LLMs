@@ -21,7 +21,7 @@ class LLM_DIS_SM:
                  use_recalibration=False,
                  rate_limiter=None, warping_transformer=None,
                  verbose=False, chat_engine=None,
-                 prompt_setting=None, shuffle_features=False):
+                 prompt_setting=None, shuffle_features=False, client=None, ):
         '''Initialize the forward LLM surrogate model. This is modelling p(y|x) as in GP/SMAC etc.'''
         self.task_context = task_context
         self.n_gens = n_gens
@@ -45,32 +45,45 @@ class LLM_DIS_SM:
         self.verbose = verbose
         self.prompt_setting = prompt_setting
         self.shuffle_features = shuffle_features
+        self.client = client
 
         assert type(self.shuffle_features) == bool, 'shuffle_features must be a boolean'
 
     def _async_generate(self, few_shot_template, query_example, query_idx):
         '''Generate a response from the LLM async.'''
         user_message = few_shot_template.format(Q=query_example['Q'])
+        responses = []
 
         MAX_RETRIES = 3
 
         resp = None
-        n_preds = int(self.n_gens / self.n_templates) if self.bootstrapping else int(self.n_gens)
-        for retry in range(MAX_RETRIES):
-            try:
-                resp = self.generate_response(user_message)
-                break
-            except Exception as e:
-                print(f'[SM] RETRYING LLM REQUEST {retry + 1}/{MAX_RETRIES}...')
-                print(resp)
-                if retry == MAX_RETRIES - 1:
-                    raise e
-                pass
+        n_preds = int(self.n_gens / self.n_templates)
+        for pred in range(n_preds):
+            for retry in range(MAX_RETRIES):
+                try:
+                    resp = self.generate_response(user_message)
+                    break
+                except Exception as e:
+                    print(f'[SM] RETRYING LLM REQUEST {retry + 1}/{MAX_RETRIES}...')
+                    print(resp)
+                    if retry == MAX_RETRIES - 1:
+                        raise e
+                    pass
 
-        if resp is None:
-            return None
+            if resp is None:
+                return None
+            responses.append(resp)
 
-        return query_idx, resp
+        if responses:
+            first_content = responses[0].choices[0].message.content
+
+            for response in responses[1:]:
+                content_to_add = response.choices[0].message.content
+                first_content += content_to_add
+
+            responses[0].choices[0].message.content = first_content
+
+        return query_idx, responses[0]
 
     def _generate_concurrently(self, few_shot_templates, query_examples):
         '''Perform concurrent generation of responses from the LLM async.'''
@@ -94,8 +107,6 @@ class LLM_DIS_SM:
     def _predict(self, all_prompt_templates, query_examples):
         start = time.time()
         all_preds = []
-        # tot_tokens = 0
-        # tot_cost = 0
 
         bool_pred_returned = []
 
@@ -111,28 +122,18 @@ class LLM_DIS_SM:
                     sample_preds = [np.nan] * self.n_gens
                 else:
                     sample_preds = []
-                    # template_response = [template_response for template_response in sample_response]
-                    # x = [x for x in template_response[0]]
-                    # x = x[0]
-                    # all_gens_text_test = x['message']['content']
-                    all_gens_text = [response[0]['message']['content']
-                                     for response in sample_response
-                                     if 'message' in response[0]]
-                    # all_gens_text = [x['message']['content'] for template_response in sample_response for x in
-                    #                  template_response[0]['choices']]  # fuarr this is some high level programming
+                    all_gens_text = [template_response[0].choices[0].message.content for template_response in
+                                     sample_response]
 
                     for gen_text in all_gens_text:
-                        gen_pred = re.findall(r"## (-?[\d.]+) ##", gen_text)
-                        if len(gen_pred) == 1:
-                            sample_preds.append(float(gen_pred[0]))
-                        else:
+                        try:
+                            gen_pred = re.findall(r"## (-?[\d.]+) ##", gen_text)
+                            sample_preds.append(gen_pred)
+                        except:
                             sample_preds.append(np.nan)
-
-                    while len(sample_preds) < self.n_gens:
-                        sample_preds.append(np.nan)
-
-                    # tot_cost += sum([x[1] for x in sample_response])
-                    # tot_tokens += sum([x[2] for x in sample_response])
+                sample_preds = [prediction for predictions in sample_preds for prediction in predictions]
+                while len(sample_preds) < self.n_gens:
+                    sample_preds.append(np.nan)
                 all_preds.append(sample_preds)
 
         end = time.time()
@@ -226,7 +227,7 @@ class LLM_DIS_SM:
             candidate_configs = self.warping_transformer.warp(candidate_configs)
 
         y_mean, y_std, time_taken = self._evaluate_candidate_points(observed_configs, observed_fvals,
-                                                                          candidate_configs)
+                                                                    candidate_configs)
         if self.lower_is_better:
             best_fval = np.min(observed_fvals.to_numpy())
             delta = -1 * (y_mean - best_fval)
@@ -250,8 +251,21 @@ class LLM_DIS_SM:
         return best_point, time_taken
 
     def generate_response(self, user_message):
-        resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
-        return resp
+        # resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
+        messages = []
+        messages.append({"role": "system", "content": "You are an AI assistant that helps people find information."})
+        messages.append({"role": "user", "content": user_message})
+
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4000,
+            top_p=0.95,
+            n=max(5, 3),  # e.g. for 5 templates, get 2 generations per template
+            timeout=100
+        )
+        return response
 
     def generate_responses(self, few_shot_templates, query_examples):
         '''Perform concurrent generation of responses from the LLM async.'''
