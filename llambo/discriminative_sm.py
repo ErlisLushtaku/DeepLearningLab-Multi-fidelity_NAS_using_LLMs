@@ -7,7 +7,6 @@ from scipy.stats import norm
 from aiohttp import ClientSession
 from llambo.rate_limiter import RateLimiter
 from llambo.discriminative_sm_utils import gen_prompt_tempates
-import ollama
 
 openai.api_type = ""
 openai.api_version = ""
@@ -254,7 +253,6 @@ class LLM_DIS_SM:
         return best_point, time_taken
 
     def generate_response(self, user_message):
-        # resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
         messages = []
         messages.append({"role": "system", "content": "You are an AI assistant that helps people find information."})
         messages.append({"role": "user", "content": user_message})

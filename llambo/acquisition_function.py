@@ -7,7 +7,6 @@ from aiohttp import ClientSession
 from langchain import FewShotPromptTemplate
 from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
-import ollama
 
 
 class LLM_ACQ:
@@ -483,7 +482,6 @@ Hyperparameter configuration:"""
         return filtered_candidate_points
 
     def generate_response(self, user_message):
-        # resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
         MAX_RETRIES = 3
         response = ''
 
