@@ -27,7 +27,8 @@ class LLAMBO:
                  use_input_warping=False,  # whether to use input warping
                  prompt_setting=None,
                  # ablation on prompt design, either 'full_context' or 'partial_context' or 'no_context'
-                 shuffle_features=False  # whether to shuffle features in prompt generation
+                 shuffle_features=False,  # whether to shuffle features in prompt generation
+                 client=None,
                  ):
         self.task_context = task_context
         assert sm_mode in ['generative', 'discriminative']
@@ -80,12 +81,14 @@ class LLAMBO:
                                               n_templates=n_templates, rate_limiter=rate_limiter,
                                               warping_transformer=warping_transformer,
                                               chat_engine=chat_engine, prompt_setting=prompt_setting,
-                                              shuffle_features=shuffle_features)
+                                              shuffle_features=shuffle_features, client=client)
 
         self.acq_func = LLM_ACQ(task_context, n_candidates, n_templates, lower_is_better,
                                 rate_limiter=rate_limiter, warping_transformer=warping_transformer,
                                 chat_engine=chat_engine, prompt_setting=prompt_setting,
-                                shuffle_features=shuffle_features)
+                                shuffle_features=shuffle_features, client=client)
+
+        self.client = client
 
     def _initialize(self):
         '''Initialize the optimization loop.'''
@@ -264,7 +267,7 @@ class LLAMBO:
         return sel_candidate_point
 
     def initialize_configs(self, num_samples):
-        init_configs = self.init_f(num_samples)
+        init_configs = self.init_f(num_samples, self.client)
 
         assert isinstance(init_configs, list), 'init_f() should return a list of configs (dictionaries)'
         for item in init_configs:

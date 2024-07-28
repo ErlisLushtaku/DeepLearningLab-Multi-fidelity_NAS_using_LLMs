@@ -1,6 +1,3 @@
-import os
-import random
-import math
 import time
 import openai
 import asyncio
@@ -12,16 +9,11 @@ from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
 import ollama
 
-openai.api_type = ""
-openai.api_version = ""
-openai.api_base = ""
-openai.api_key = ""
-
 
 class LLM_ACQ:
     def __init__(self, task_context, n_candidates, n_templates, lower_is_better,
                  jitter=False, rate_limiter=None, warping_transformer=None, chat_engine=None,
-                 prompt_setting=None, shuffle_features=False):
+                 prompt_setting=None, shuffle_features=False, client=None, ):
         '''Initialize the LLM Acquisition function.'''
         self.task_context = task_context
         self.n_candidates = n_candidates
@@ -42,6 +34,7 @@ class LLM_ACQ:
         self.chat_engine = chat_engine
         self.prompt_setting = prompt_setting
         self.shuffle_features = shuffle_features
+        self.client = client
 
         assert type(self.shuffle_features) == bool, 'shuffle_features must be a boolean'
 
@@ -490,17 +483,29 @@ Hyperparameter configuration:"""
         return filtered_candidate_points
 
     def generate_response(self, user_message):
+        # resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
         MAX_RETRIES = 3
+        response = ''
 
-        response_content = ''
+        messages = []
+        messages.append({"role": "system", "content": "You are an AI assistant that helps people find information."})
+        messages.append({"role": "user", "content": user_message})
+
         for i in range(MAX_RETRIES):
             try:
-                response = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
-                response_content = response['message']['content'].split('##')[1].strip()
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=4000,
+                    top_p=0.95,
+                    n=max(5, 3),  # e.g. for 5 templates, get 2 generations per template
+                    timeout=100
+                )
             except Exception:
                 continue
 
-            return response_content
+            return response
 
         return None
 
@@ -517,8 +522,9 @@ Hyperparameter configuration:"""
         for idx, response in enumerate(llm_response):
             if response is not None:
                 try:
-                    resp = response['message']['content']
+                    resp = response.choices[0].message.content
                     results[idx] = resp
                 except Exception:
                     continue
+
         return results  # format [(resp, tot_cost, tot_tokens), None, (resp, tot_cost, tot_tokens)]
