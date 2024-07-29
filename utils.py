@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 def convert_LLAMBO_df_to_synetune_dict(config):
     config = config.to_dict()
     dicts = []
@@ -30,10 +29,34 @@ def convert_LLAMBO_df_to_synetune_dict(config):
 
     return dicts
 
+def convert_LLAMBO_dict_to_synetune_dict(config):
+    # Check if input is a dictionary
+    if isinstance(config, list):
+        synetune_dicts = []
+        for cfg in config:
+            synetune_dict = {
+                'hp_x0': cfg['op_0_to_1'],
+                'hp_x1': cfg['op_0_to_2'],
+                'hp_x2': cfg['op_0_to_3'],
+                'hp_x3': cfg['op_1_to_2'],
+                'hp_x4': cfg['op_1_to_3'],
+                'hp_x5': cfg['op_2_to_3']
+            }
+            synetune_dicts.append(synetune_dict)
+        return synetune_dicts
+    else:
+        synetune_dict = {
+            'hp_x0': config['op_0_to_1'],
+            'hp_x1': config['op_0_to_2'],
+            'hp_x2': config['op_0_to_3'],
+            'hp_x3': config['op_1_to_2'],
+            'hp_x4': config['op_1_to_3'],
+            'hp_x5': config['op_2_to_3']
+        }
+        return synetune_dict
+    # Check if input is a list of dictionaries
 
-import pandas as pd
-
-def convert_synetune_dict_to_LLAMBO_compatible_format(synetune_dicts):
+def convert_synetune_dict_to_LLAMBO_dict(synetune_dicts):
     # Check if input is a list of dictionaries
     if isinstance(synetune_dicts, list):
         data_list = []

@@ -467,11 +467,7 @@ Hyperparameter configuration:"""
                 print(f'Desired fval: {desired_fval:.6f}')
                 print(f'Number of proposed candidate points: {len(candidate_points)}')
                 print(f'Number of accepted candidate points: {filtered_candidate_points.shape[0]}')
-                # if len(candidate_points) > 5:
-                #     filtered_candidate_points = pd.DataFrame(candidate_points)
-                #     break
-                # else:
-                #     raise Exception('LLM failed to generate candidate points')
+                break
 
         if self.warping_transformer is not None:
             filtered_candidate_points = self.warping_transformer.unwarp(filtered_candidate_points)
