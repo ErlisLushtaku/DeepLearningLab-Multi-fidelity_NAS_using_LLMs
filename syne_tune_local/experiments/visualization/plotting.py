@@ -18,11 +18,11 @@ import copy
 import numpy as np
 import pandas as pd
 
-from syne_tune_local.constants import ST_TUNER_TIME
-from syne_tune_local.experiments.visualization.aggregate_results import (
+from syne_tune.constants import ST_TUNER_TIME
+from syne_tune.experiments.visualization.aggregate_results import (
     aggregate_and_errors_over_time,
 )
-from syne_tune_local.experiments.visualization.results_utils import (
+from syne_tune.experiments.visualization.results_utils import (
     MapMetadataToSetup,
     MapMetadataToSubplot,
     DateTimeBounds,
@@ -31,7 +31,7 @@ from syne_tune_local.experiments.visualization.results_utils import (
     download_result_files_from_s3,
     _insert_into_nested_dict,
 )
-from syne_tune_local.try_import import try_import_visual_message
+from syne_tune.try_import import try_import_visual_message
 
 try:
     import matplotlib.pyplot as plt
@@ -336,8 +336,8 @@ class ComparativeResults:
     This class loads, processes, and plots results of a comparative study,
     combining several experiments for different methods, seeds, and
     benchmarks (optional). Note that an experiment corresponds to one run
-    of HPO, resulting in files :const:`~syne_tune_local.constants.ST_METADATA_FILENAME`
-    for metadata, and :const:`~syne_tune_local.constants.ST_RESULTS_DATAFRAME_FILENAME`
+    of HPO, resulting in files :const:`~syne_tune.constants.ST_METADATA_FILENAME`
+    for metadata, and :const:`~syne_tune.constants.ST_RESULTS_DATAFRAME_FILENAME`
     for time-stamped results.
 
     There is one comparative plot per benchmark (aggregation of results
@@ -379,7 +379,7 @@ class ComparativeResults:
     If ``datetime_bounds`` is given, it contains a tuple of strings
     ``(lower_time, upper_time)``, or a dictionary mapping names from
     ``experiment_names`` to such tuples. Both strings are time-stamps in the
-    format :const:`~syne_tune_local.constants.ST_DATETIME_FORMAT` (example:
+    format :const:`~syne_tune.constants.ST_DATETIME_FORMAT` (example:
     "2023-03-19-22-01-57"), and each can be ``None`` as well. This serves to
     filter out any result whose time-stamp does not fall within the interval
     (both sides are inclusive), where ``None`` means the interval is open on

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from syne_tune_local.constants import (
+from syne_tune.constants import (
     ST_TUNER_TIME,
 )
 from syne_tune_local.experiments.visualization.plotting import PlotParameters
@@ -30,8 +30,8 @@ from syne_tune_local.experiments.visualization.results_utils import (
     download_result_files_from_s3,
     SINGLE_BENCHMARK_KEY,
 )
-from syne_tune_local.try_import import try_import_visual_message
-from syne_tune_local.util import is_increasing, is_positive_integer
+from syne_tune.try_import import try_import_visual_message
+from syne_tune.util import is_increasing, is_positive_integer
 
 try:
     import matplotlib.pyplot as plt
@@ -127,7 +127,7 @@ class TrialsOfExperimentResults:
         plot_params: Optional[PlotParameters] = None,
         multi_fidelity_params: Optional[MultiFidelityParameters] = None,
         benchmark_key: Optional[str] = "benchmark",
-        seed_key: str = "seed",
+        seed_key: str = None,
         with_subdirs: Optional[Union[str, List[str]]] = "*",
         datetime_bounds: Optional[DateTimeBounds] = None,
         download_from_s3: bool = False,
@@ -136,7 +136,6 @@ class TrialsOfExperimentResults:
         assert setups, "setups must not be empty"
         if multi_fidelity_params is not None:
             multi_fidelity_params.check_params(setups)
-        assert seed_key is not None, "seed_key must not be None"
         if download_from_s3:
             assert (
                 with_subdirs is not None
@@ -173,11 +172,11 @@ class TrialsOfExperimentResults:
             self._rung_levels = []
 
     def _plot_figure(
-        self,
-        df: pd.DataFrame,
-        plot_params: PlotParameters,
-        benchmark_name: Optional[str],
-        seed: int,
+            self,
+            df: pd.DataFrame,
+            plot_params: PlotParameters,
+            benchmark_name: Optional[str],
+            seed: int,
     ):
         subplots = plot_params.subplots
         if subplots is not None:
@@ -200,9 +199,6 @@ class TrialsOfExperimentResults:
                 subplot_titles = subplots.titles
                 title_each_figure = subplots.title_each_figure
             else:
-                # If ``plot_params.subplots.titles`` is not given, we use setup
-                # names as titles. In this case, each subfigure has its own
-                # title, not just each column
                 subplot_titles = [self.setups[ind] for ind in subplot_indices]
                 title_each_figure = True
         else:
@@ -222,15 +218,15 @@ class TrialsOfExperimentResults:
             msg_prefix = f"benchmark_name = {benchmark_name}, " + msg_prefix
         num_rungs = len(self._rung_levels)
 
+        # Increase the figure size here
         plt.figure(dpi=plot_params.dpi)
-        figsize = (5 * ncols, 4 * nrows)
+        figsize = (10 * ncols, 8 * nrows)  # Adjust the figure size as needed
         fig, axs = plt.subplots(**subplots_kwargs, squeeze=False, figsize=figsize)
         for setup_name, setup_df in df.groupby("setup_name"):
-            # Check that there is a single experiment per setup
             tuner_names = list(setup_df.tuner_name.unique())
             assert len(tuner_names) == 1, (
-                msg_prefix
-                + f"For setup_name = {setup_name} found tuner_names = {tuner_names}"
+                    msg_prefix
+                    + f"For setup_name = {setup_name} found tuner_names = {tuner_names}"
             )
             logger.info(msg_prefix + f"setup_name = {setup_name}: {tuner_names[0]}")
             is_multi_fidelity = setup_name in self._multifidelity_setups
@@ -261,7 +257,6 @@ class TrialsOfExperimentResults:
                 if not pause_resume and sz > 1:
                     ax.plot(rt, y, "-", color=color)
                 else:
-                    # Pause and resume: Plot differences pieces
                     ranges = [
                         (a + 1, b + 1) for a, b in zip(rungs_here[:-1], rungs_here[1:])
                     ]
@@ -362,8 +357,7 @@ class TrialsOfExperimentResults:
         :param file_name: If given, the figure is stored in a file of this name
         """
         index_key = (
-            SINGLE_BENCHMARK_KEY if self._benchmark_key is None else benchmark_name,
-            seed,
+            SINGLE_BENCHMARK_KEY if self._benchmark_key is None else benchmark_name
         )
         assert (
             index_key in self._reverse_index

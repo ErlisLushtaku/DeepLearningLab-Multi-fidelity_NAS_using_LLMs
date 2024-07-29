@@ -22,13 +22,13 @@ from typing import Callable, Dict, Any, Optional, Union, Tuple, List
 
 import pandas as pd
 
-from syne_tune_local.constants import (
+from syne_tune.constants import (
     ST_DATETIME_FORMAT,
     ST_METADATA_FILENAME,
     ST_RESULTS_DATAFRAME_FILENAME,
 )
-from syne_tune_local.experiments.launchers.utils import sync_from_s3_command
-from syne_tune_local.util import experiment_path, s3_experiment_path
+from syne_tune.experiments.launchers.utils import sync_from_s3_command
+from syne_tune.util import experiment_path, s3_experiment_path
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +179,7 @@ def create_index_for_result_files(
     enter ``(result_path, setup_name, subplot_no)`` into the list for benchmark
     name.
     Here, ``result_path`` is the result path for the experiment, without the
-    :meth:`~syne_tune_local.util.experiment_path` prefix. The index returned is the
+    :meth:`~syne_tune.util.experiment_path` prefix. The index returned is the
     dictionary from benchmark names to these list. It allows loading results
     specifically for each benchmark, and we do not have to load and parse the
     metadata files again.
@@ -208,7 +208,7 @@ def create_index_for_result_files(
     If ``datetime_bounds`` is given, it contains a tuple of strings
     ``(lower_time, upper_time)``, or a dictionary mapping experiment names (from
     ``experiment_names``) to such tuples. Both strings are time-stamps in the
-    format :const:`~syne_tune_local.constants.ST_DATETIME_FORMAT` (example:
+    format :const:`~syne_tune.constants.ST_DATETIME_FORMAT` (example:
     "2023-03-19-22-01-57"), and each can be ``None`` as well. This serves to
     filter out any result whose time-stamp does not fall within the interval
     (both sides are inclusive), where ``None`` means the interval is open on
@@ -388,7 +388,7 @@ def download_result_files_from_s3(
     """
     # We want the most part of ``experiments`` to be available without
     # ``aws`` dependencies, which is why this import is local
-    from syne_tune_local.backend.sagemaker_backend.sagemaker_utils import (
+    from syne_tune.backend.sagemaker_backend.sagemaker_utils import (
         s3_download_files_recursively,
     )
 

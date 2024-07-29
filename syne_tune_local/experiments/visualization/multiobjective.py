@@ -15,7 +15,7 @@ from typing import List, Tuple, Optional
 import pandas as pd
 import numpy as np
 
-from syne_tune_local.optimizer.schedulers.multiobjective.utils import hypervolume_cumulative
+from syne_tune.optimizer.schedulers.multiobjective.utils import hypervolume_cumulative
 
 
 def hypervolume_indicator_column_generator(
@@ -30,7 +30,7 @@ def hypervolume_indicator_column_generator(
     dataframe). For a metric with ``mode == "max"``, we use its negative.
 
     This mapping is used to create the ``dataframe_column_generator`` argument
-    of :meth:`~syne_tune_local.experiments.ComparativeResults.plot`. Since the
+    of :meth:`~syne_tune.experiments.ComparativeResults.plot`. Since the
     current implementation is not incremental and quite slow, if you plot
     results for single-fidelity HPO methods, it is strongly recommended to
     also use ``one_result_per_trial=True``:
