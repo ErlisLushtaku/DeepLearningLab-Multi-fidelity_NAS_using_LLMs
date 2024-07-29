@@ -15,11 +15,11 @@ Example for running PASHA on NASBench201
 """
 import logging
 
-from syne_tune.experiments.benchmark_definitions.nas201 import nas201_benchmark
-from syne_tune.blackbox_repository import BlackboxRepositoryBackend
-from syne_tune.backend.simulator_backend.simulator_callback import SimulatorCallback
-from syne_tune.optimizer.baselines import PASHA
-from syne_tune import Tuner, StoppingCriterion
+from syne_tune_local.experiments.benchmark_definitions.nas201 import nas201_benchmark
+from syne_tune_local.blackbox_repository import BlackboxRepositoryBackend
+from syne_tune_local.backend.simulator_backend.simulator_callback import SimulatorCallback
+from syne_tune_local.optimizer.baselines import PASHA
+from syne_tune_local import Tuner, StoppingCriterion
 
 
 if __name__ == "__main__":

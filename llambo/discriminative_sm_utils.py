@@ -2,31 +2,33 @@ import numpy as np
 from langchain import FewShotPromptTemplate
 from langchain import PromptTemplate
 
+
 def _count_decimal_places(n):
     '''Count the number of decimal places in a number.'''
     s = format(n, '.10f')
     if '.' not in s:
         return 0
-    num_dp = len(s.split('.')[1].rstrip('0')) 
+    num_dp = len(s.split('.')[1].rstrip('0'))
     return num_dp
 
+
 def prepare_configurations(
-        hyperparameter_constraints, 
-        observed_configs, 
-        observed_fvals=None, 
-        seed=None, 
-        bootstrapping=False, 
+        hyperparameter_constraints,
+        observed_configs,
+        observed_fvals=None,
+        seed=None,
+        bootstrapping=False,
         use_feature_semantics=True,
         shuffle_features=False,
         apply_warping=False
 ):
     '''Prepare and possible (shuffle) the configurations for prompt templates.'''
     examples = []
-    
+
     hyperparameter_names = observed_configs.columns
     observed_configs_ = observed_configs.copy()
     observed_configs = observed_configs_
-    
+
     # shuffle indices to reduce permutation sensitivity
     if seed is not None:
         np.random.seed(seed)
@@ -51,7 +53,7 @@ def prepare_configurations(
     observed_configs = observed_configs.reset_index(drop=True)
     if observed_fvals is not None:
         observed_fvals = observed_fvals.reset_index(drop=True)
-    
+
     # serialize the k-shot examples
     for index, row in observed_configs.iterrows():
         row_string = ''
@@ -63,9 +65,9 @@ def prepare_configurations(
             else:
                 lower_bound = hyperparameter_constraints[hyperparameter_names[i]][2][1]
             if use_feature_semantics:
-                row_string += f'{hyperparameter_names[i]} is ' 
+                row_string += f'{hyperparameter_names[i]} is '
             else:
-                row_string += f'X{i+1} is '
+                row_string += f'X{i + 1} is '
 
             if apply_warping:
                 if hyp_type == 'int' and hyp_trans != 'log':
@@ -87,8 +89,7 @@ def prepare_configurations(
                 else:
                     row_string += row[i]
 
-
-            if i != len(row)-1:
+            if i != len(row) - 1:
                 row_string += ', '
         example = {'Q': row_string}
         if observed_fvals is not None:
@@ -96,19 +97,18 @@ def prepare_configurations(
             perf = f'## {observed_fvals.values[row_index][0]:.6f} ##'
             example['A'] = perf
         examples.append(example)
-        
+
     return examples
 
 
-
 def gen_prompt_tempates(
-        task_context, 
-        observed_configs, 
-        observed_fvals, 
-        candidate_configs, 
-        n_prompts=1, 
+        task_context,
+        observed_configs,
+        observed_fvals,
+        candidate_configs,
+        n_prompts=1,
         bootstrapping=False,
-        use_context='full_context', 
+        use_context='full_context',
         use_feature_semantics=True,
         shuffle_features=False,
         apply_warping=False
@@ -129,17 +129,19 @@ def gen_prompt_tempates(
 
     if use_context == 'no_context' or not use_feature_semantics:
         metric = 'a metric'
-    
+
     all_prompt_templates = []
     for i in range(n_prompts):
-        few_shot_examples = prepare_configurations(task_context['hyperparameter_constraints'], observed_configs, observed_fvals, 
-                                                              seed=i, bootstrapping=bootstrapping, use_feature_semantics=use_feature_semantics, 
-                                                              shuffle_features=shuffle_features, apply_warping=apply_warping)
+        few_shot_examples = prepare_configurations(task_context['hyperparameter_constraints'], observed_configs,
+                                                   observed_fvals,
+                                                   seed=i, bootstrapping=bootstrapping,
+                                                   use_feature_semantics=use_feature_semantics,
+                                                   shuffle_features=shuffle_features, apply_warping=apply_warping)
 
         example_template = """
 Hyperparameter configuration: {Q}
 Performance: {A}"""
-        
+
         example_prompt = PromptTemplate(
             input_variables=["Q", "A"],
             template=example_template
@@ -155,7 +157,7 @@ Performance: {A}"""
             else:
                 raise Exception
             prefix += f" The dataset contains {n_samples} images and each image has height 32, width 32, and 3 channels."
-        prefix += f" Your response should only contain the predicted {metric} in the format ## performance ##."
+        prefix += f" Your response should contain only the predicted {metric} surrounded by double hashtags (##) in the format ## performance ## for example ## 1.2345 ##. Do not put anything else in the response. It is strict to suggest only a single performance metric."
 
         suffix = """
 Hyperparameter configuration: {Q}
@@ -171,9 +173,7 @@ Performance: """
         )
         all_prompt_templates.append(few_shot_prompt)
 
-    query_examples = prepare_configurations(task_context['hyperparameter_constraints'], candidate_configs, 
-                                                       seed=None, bootstrapping=False, use_feature_semantics=use_feature_semantics, 
-                                                       shuffle_features=shuffle_features, apply_warping=apply_warping)
+    query_examples = prepare_configurations(task_context['hyperparameter_constraints'], candidate_configs,
+                                            seed=None, bootstrapping=False, use_feature_semantics=use_feature_semantics,
+                                            shuffle_features=shuffle_features, apply_warping=apply_warping)
     return all_prompt_templates, query_examples
-
-

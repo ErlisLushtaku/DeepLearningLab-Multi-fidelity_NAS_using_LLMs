@@ -7,7 +7,6 @@ from scipy.stats import norm
 from aiohttp import ClientSession
 from llambo.rate_limiter import RateLimiter
 from llambo.discriminative_sm_utils import gen_prompt_tempates
-import ollama
 
 openai.api_type = ""
 openai.api_version = ""
@@ -128,7 +127,10 @@ class LLM_DIS_SM:
                     for gen_text in all_gens_text:
                         try:
                             gen_pred = re.findall(r"## (-?[\d.]+) ##", gen_text)
-                            sample_preds.append(gen_pred)
+                            if len(gen_pred) == int(self.n_gens/self.n_templates):
+                                sample_preds.append(gen_pred)
+                            else:
+                                sample_preds.append(np.nan)
                         except:
                             sample_preds.append(np.nan)
                 sample_preds = [prediction for predictions in sample_preds for prediction in predictions]
@@ -251,7 +253,6 @@ class LLM_DIS_SM:
         return best_point, time_taken
 
     def generate_response(self, user_message):
-        # resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
         messages = []
         messages.append({"role": "system", "content": "You are an AI assistant that helps people find information."})
         messages.append({"role": "user", "content": user_message})
@@ -265,6 +266,7 @@ class LLM_DIS_SM:
             n=max(5, 3),  # e.g. for 5 templates, get 2 generations per template
             timeout=100
         )
+
         return response
 
     def generate_responses(self, few_shot_templates, query_examples):

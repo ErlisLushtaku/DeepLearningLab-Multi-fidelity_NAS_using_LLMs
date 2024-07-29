@@ -7,7 +7,6 @@ from aiohttp import ClientSession
 from langchain import FewShotPromptTemplate
 from langchain import PromptTemplate
 from llambo.rate_limiter import RateLimiter
-import ollama
 
 
 class LLM_ACQ:
@@ -172,6 +171,7 @@ class LLM_ACQ:
             task_context = self.task_context
             model = task_context['model']
             task = task_context['task']
+            image_size = task_context['image_size']
             tot_feats = task_context['tot_feats']
             cat_feats = task_context['cat_feats']
             num_feats = task_context['num_feat']
@@ -198,7 +198,7 @@ Hyperparameter configuration: {Q}"""
                     prefix += f" The model is evaluated on a tabular {task} task."
                 else:
                     raise Exception
-                prefix += f" The dataset contains {num_samples} images and each image has height 32, width 32, and 3 channels."
+                prefix += f" The dataset contains {num_samples} images and each image has {image_size}."
             prefix += f" The allowable choices for the architectures are:\n"
             for i, (hyperparameter, constraint) in enumerate(hyperparameter_constraints.items()):
                 if constraint[0] == 'float':
@@ -448,8 +448,11 @@ Hyperparameter configuration:"""
             tot_tokens = 0
             # loop through n_coroutine async calls
             for response in llm_responses:
-                response_content = response.split('##')[1].strip()
-                candidate_points.append(self._convert_to_json(response_content))
+                try:
+                    response_content = response.split('##')[1].strip()
+                    candidate_points.append(self._convert_to_json(response_content))
+                except Exception as e:
+                    continue
 
             proposed_points = self._filter_candidate_points(observed_configs.to_dict(orient='records'),
                                                             candidate_points)
@@ -464,11 +467,7 @@ Hyperparameter configuration:"""
                 print(f'Desired fval: {desired_fval:.6f}')
                 print(f'Number of proposed candidate points: {len(candidate_points)}')
                 print(f'Number of accepted candidate points: {filtered_candidate_points.shape[0]}')
-                # if len(candidate_points) > 5:
-                #     filtered_candidate_points = pd.DataFrame(candidate_points)
-                #     break
-                # else:
-                #     raise Exception('LLM failed to generate candidate points')
+                break
 
         if self.warping_transformer is not None:
             filtered_candidate_points = self.warping_transformer.unwarp(filtered_candidate_points)
@@ -479,21 +478,30 @@ Hyperparameter configuration:"""
         return filtered_candidate_points
 
     def generate_response(self, user_message):
-        # resp = ollama.chat(model="llama3", messages=[{'role': 'user', 'content': user_message}])
+        MAX_RETRIES = 3
+        response = ''
+
         messages = []
         messages.append({"role": "system", "content": "You are an AI assistant that helps people find information."})
         messages.append({"role": "user", "content": user_message})
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=4000,
-            top_p=0.95,
-            n=max(5, 3),  # e.g. for 5 templates, get 2 generations per template
-            timeout=100
-        )
-        return response
+        for i in range(MAX_RETRIES):
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=4000,
+                    top_p=0.95,
+                    n=max(5, 3),  # e.g. for 5 templates, get 2 generations per template
+                    timeout=100
+                )
+            except Exception:
+                continue
+
+            return response
+
+        return None
 
     def generate_responses(self, prompt_templates, query_templates):
         tasks = []
@@ -507,7 +515,10 @@ Hyperparameter configuration:"""
 
         for idx, response in enumerate(llm_response):
             if response is not None:
-                resp = response.choices[0].message.content
-                results[idx] = resp
+                try:
+                    resp = response.choices[0].message.content
+                    results[idx] = resp
+                except Exception:
+                    continue
 
         return results  # format [(resp, tot_cost, tot_tokens), None, (resp, tot_cost, tot_tokens)]
