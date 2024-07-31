@@ -153,10 +153,12 @@ class LLM_ACQ:
             observed_configs,
             observed_fvals,
             desired_fval,
+            desired_fval_fidelity,
             n_prompts=1,
             use_context='full_context',
             use_feature_semantics=True,
-            shuffle_features=False
+            shuffle_features=False,
+            current_resource_level=None
     ):
         '''Generate prompt templates for acquisition function.'''
         all_prompt_templates = []
@@ -252,7 +254,7 @@ Hyperparameter configuration: {Q}"""
                     prefix += f" (categorical)"
 
                 prefix += "\n"
-            prefix += f"Recommend a configuration that can achieve the target performance of {jittered_desired_fval:.6f}. "
+            prefix += f"Recommend a configuration that will be run with the fidelity {current_resource_level} epochs that can achieve the target performance of {jittered_desired_fval:.6f} on the fidelity {desired_fval_fidelity} epochs. "
             if use_context in ['partial_context', 'full_context']:
                 prefix += "Do not recommend categorical choices outside of given lists. Recommend categorical choices with highest possible precision, as requested by the allowed ranges. "
             prefix += f"Your response must only contain the predicted configuration surrounded by double hashtags (##), in the format ## configuration ##, put the actual configuration in between the hashtags, for example: ## op_0_to_1: avg_pool_3x3, op_0_to_2: skip_connect, op_0_to_3: nor_conv_3x3, op_1_to_2: none, op_1_to_3: avg_pool_3x3, op_2_to_3: nor_conv_1x1 ##. Do not output anything else. Please provide a configuration different from the provided ones.\n"
@@ -370,7 +372,7 @@ Hyperparameter configuration:"""
         return filtered_candidates
 
     def get_candidate_points(self, observed_configs, observed_fvals,
-                             use_feature_semantics=True, use_context='full_context', alpha=-0.2):
+                             use_feature_semantics=True, use_context='full_context', alpha=-0.2, y=None, current_resource_level=None, highest_surrogate_fidelity=None):
         '''Generate candidate points for acquisition function.'''
         assert alpha >= -1 and alpha <= 1, 'alpha must be between -1 and 1'
         if alpha == 0:
@@ -382,17 +384,34 @@ Hyperparameter configuration:"""
         # generate prompt templates
         start_time = time.time()
 
+        observed_fvals_for_current_fidelity = None
+        desired_fval_fidelity = 0
+        if current_resource_level == highest_surrogate_fidelity:
+            observed_fvals_for_current_fidelity = observed_fvals
+            desired_fval_fidelity = highest_surrogate_fidelity
+        else:
+            # Filter y based on hp_epoch
+            filtered_y = [entry for entry in y if entry['hp_epoch'] == current_resource_level]
+            if not filtered_y:
+                observed_fvals_for_current_fidelity = observed_fvals
+                desired_fval_fidelity = highest_surrogate_fidelity
+            else:
+                # Convert filtered_y to the same format as observed_fvals
+                fval_data = {'score': [fval['metric_valid_error'] for fval in filtered_y]}
+                observed_fvals_for_current_fidelity = pd.DataFrame(fval_data)
+                desired_fval_fidelity = current_resource_level
+
         # get desired f_val for candidate points
-        range = np.abs(np.max(observed_fvals.values) - np.min(observed_fvals.values))
+        range = np.abs(np.max(observed_fvals_for_current_fidelity.values) - np.min(observed_fvals_for_current_fidelity.values))
 
         if range == 0:
             # sometimes there is no variability in y :')
-            range = 0.1 * np.abs(np.max(observed_fvals.values))
+            range = 0.1 * np.abs(np.max(observed_fvals_for_current_fidelity.values))
         alpha_range = [0.1, 1e-2, 1e-3, -1e-3, -1e-2, 1e-1]
 
         if self.lower_is_better:
-            self.observed_best = np.min(observed_fvals.values)
-            self.observed_worst = np.max(observed_fvals.values)
+            self.observed_best = np.min(observed_fvals_for_current_fidelity.values)
+            self.observed_worst = np.max(observed_fvals_for_current_fidelity.values)
             desired_fval = self.observed_best - alpha * range
 
             while desired_fval <= .00001:  # score can't be negative
@@ -404,8 +423,8 @@ Hyperparameter configuration:"""
                         break
             print(f'Adjusted alpha: {alpha} | [original alpha: {self.alpha}], desired fval: {desired_fval:.6f}')
         else:
-            self.observed_best = np.max(observed_fvals.values)
-            self.observed_worst = np.min(observed_fvals.values)
+            self.observed_best = np.max(observed_fvals_for_current_fidelity.values)
+            self.observed_worst = np.min(observed_fvals_for_current_fidelity.values)
             desired_fval = self.observed_best + alpha * range
 
             while desired_fval >= .9999:  # accuracy can't be greater than 1
@@ -424,10 +443,12 @@ Hyperparameter configuration:"""
 
         prompt_templates, query_templates = self._gen_prompt_tempates_acquisitions(observed_configs, observed_fvals,
                                                                                    desired_fval,
+                                                                                   desired_fval_fidelity,
                                                                                    n_prompts=self.n_templates,
                                                                                    use_context=use_context,
                                                                                    use_feature_semantics=use_feature_semantics,
-                                                                                   shuffle_features=self.shuffle_features)
+                                                                                   shuffle_features=self.shuffle_features,
+                                                                                   current_resource_level=current_resource_level)
 
         print('=' * 100)
         print('EXAMPLE ACQUISITION PROMPT')

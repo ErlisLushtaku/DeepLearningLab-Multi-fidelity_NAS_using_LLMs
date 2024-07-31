@@ -146,7 +146,11 @@ class LLAMBO:
 
         # Prepare new_fvals data
         # Assuming new_fvals is a list of dictionaries where each dictionary has a 'metric_valid_error' key
-        fval_data = {'score': [fval['metric_valid_error'] for fval in new_fvals]}
+        hp_epoch = new_fvals[0]['hp_epoch'] if len(new_fvals) > 0 else None
+        fval_data = {
+            'score': [fval['metric_valid_error'] for fval in new_fvals],
+            'hp_epoch': [[hp_epoch] for fval in new_fvals]
+        }
 
         # Convert new_fvals into a DataFrame
         self.observed_fvals = pd.DataFrame(fval_data)
@@ -244,10 +248,14 @@ class LLAMBO:
         print("Optimization complete")
         return self.observed_configs, self.observed_fvals
 
-    def get_config(self):
+    def get_config(self, y, current_resource_level):
         candidate_points = self.acq_func.get_candidate_points(self.observed_configs,
                                                               self.observed_fvals[['score']],
-                                                              alpha=self.alpha)
+                                                              alpha=self.alpha,
+                                                              y=y,
+                                                              current_resource_level=current_resource_level,
+                                                              highest_surrogate_fidelity=self.observed_fvals[['hp_epoch']].iloc[0][0][0]
+                                                              )
 
         print('=' * 150)
         print('EXAMPLE POINTS PROPOSED')
@@ -256,8 +264,7 @@ class LLAMBO:
 
         # select candidate point
         sel_candidate_point, time_taken = self.surrogate_model.select_query_point(self.observed_configs,
-                                                                                  self.observed_fvals[
-                                                                                      ['score']],
+                                                                                  self.observed_fvals[['score']],
                                                                                   candidate_points)
         print('=' * 150)
         print('SELECTED CANDIDATE POINT')

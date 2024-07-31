@@ -307,7 +307,7 @@ class SynchronousHyperbandScheduler(
                 logger.info(f"trial_id {trial_id} promoted to {slot_in_rung.level}")
         else:
             # New trial to be started (id is ``trial_id`` passed in)
-            config = self.searcher.get_config(trial_id=str(trial_id))
+            config = self.searcher.get_config(trial_id=str(trial_id), resource_level=slot_in_rung.level)
             if config is not None:
                 config = cast_config_values(config, self.config_space)
                 self.searcher.register_pending(
