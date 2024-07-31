@@ -12,44 +12,20 @@ Here is an example of the response format:
 ```
 [
     {
-        "op_0_to_1": "skip_connect",
+        "op_0_to_1": "none",
         "op_0_to_2": "avg_pool_3x3",
-        "op_0_to_3": "nor_conv_1x1",
-        "op_1_to_2": "none",
+        "op_0_to_3": "none",
+        "op_1_to_2": "skip_connect",
         "op_1_to_3": "nor_conv_3x3",
-        "op_2_to_3": "skip_connect"
+        "op_2_to_3": "nor_conv_1x1"
     },
     {
         "op_0_to_1": "avg_pool_3x3",
-        "op_0_to_2": "nor_conv_1x1",
-        "op_0_to_3": "none",
-        "op_1_to_2": "skip_connect",
-        "op_1_to_3": "avg_pool_3x3",
-        "op_2_to_3": "nor_conv_3x3"
-    },
-    {
-        "op_0_to_1": "nor_conv_3x3",
-        "op_0_to_2": "skip_connect",
-        "op_0_to_3": "avg_pool_3x3",
-        "op_1_to_2": "none",
-        "op_1_to_3": "skip_connect",
-        "op_2_to_3": "nor_conv_1x1"
-    },
-    {
-        "op_0_to_1": "None",
         "op_0_to_2": "avg_pool_3x3",
         "op_0_to_3": "none",
         "op_1_to_2": "skip_connect",
         "op_1_to_3": "nor_conv_3x3",
-        "op_2_to_3": "skip_connect"
-    },
-    {
-        "op_0_to_1": "nor_conv_1x1",
-        "op_0_to_2": "none",
-        "op_0_to_3": "avg_pool_3x3",
-        "op_1_to_2": "avg_pool_3x3",
-        "op_1_to_3": "skip_connect",
         "op_2_to_3": "nor_conv_1x1"
-    }
+    },
 ]
 ```
