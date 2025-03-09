@@ -8,3 +8,5 @@ The LLAMBO codebase was adapted from its original use in HPO to focus on Neural 
 We leveraged [Syne Tune library](https://syne-tune.readthedocs.io/en/latest/) to extend LLAMBO to work in a multi-fidelity setting by creating a custom searcher for Syne Tune and integrating it with the library's Synchronous Hyperband Scheduler. The custom searcher is used by the scheduler for warmstarting, to sample new configurations and to predict their mean performance and variance which are then used in the acquisition function."
 
 Please check [Poster.pdf](https://github.com/ErlisLushtaku/DeepLearningLab-Multi-fidelity_NAS_using_LLMs/blob/main/Poster.pdf) for more details and the results.
+
+To test the pipeline you can check the Jupyter Notebook [test.ipynb](https://github.com/ErlisLushtaku/DeepLearningLab-Multi-fidelity_NAS_using_LLMs/blob/main/test.ipynb).
